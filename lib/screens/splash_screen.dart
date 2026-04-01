@@ -1,49 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../screens/auth/login_screen.dart';
-import '../screens/home/home_screen.dart';
 
-class SplashScreen extends StatefulWidget {
+/// Pure display widget — shows the CareLoop branding while Firebase/Auth
+/// is initialising. All routing decisions are made by AuthWrapper in main.dart.
+class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
-
-  @override
-  State<SplashScreen> createState() => _SplashScreenState();
-}
-
-class _SplashScreenState extends State<SplashScreen> {
-  @override
-  void initState() {
-    super.initState();
-    _navigate();
-  }
-
-  Future<void> _navigate() async {
-    // Minimum splash display time
-    await Future.delayed(const Duration(milliseconds: 1800));
-
-    if (!mounted) return;
-
-    // Listen to first auth state emission — works even if Firebase
-    // took a moment to initialise
-    final user = await FirebaseAuth.instance
-        .authStateChanges()
-        .first
-        .timeout(
-      const Duration(seconds: 5),
-      onTimeout: () => null, // treat timeout as logged-out
-    );
-
-    if (!mounted) return;
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => user != null ? const HomeScreen() : const LoginScreen(),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,11 +29,8 @@ class _SplashScreenState extends State<SplashScreen> {
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.favorite_rounded,
-                color: Colors.white,
-                size: 44,
-              ),
+              child: const Icon(Icons.favorite_rounded,
+                  color: Colors.white, size: 44),
             )
                 .animate()
                 .scale(duration: 600.ms, curve: Curves.elasticOut)
@@ -95,10 +54,7 @@ class _SplashScreenState extends State<SplashScreen> {
             Text(
               'Intelligent Care, Continuously',
               style: GoogleFonts.dmSans(
-                fontSize: 14,
-                color: Colors.white54,
-                letterSpacing: 0.3,
-              ),
+                  fontSize: 14, color: Colors.white54, letterSpacing: 0.3),
             ).animate(delay: 500.ms).fadeIn(duration: 500.ms),
 
             const SizedBox(height: 60),

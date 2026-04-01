@@ -10,14 +10,15 @@ dependencies:
   flutter:
     sdk: flutter
 
+  flutter_local_notifications: ^17.2.1
+  timezone: ^0.9.4
+  http: ^1.2.1          # replaces google_generative_ai for Gemini calls
+
   # Firebase — manual web console config (no FlutterFire CLI needed)
   firebase_core: ^2.27.0
   firebase_auth: ^4.17.0
   cloud_firestore: ^4.15.0
   firebase_messaging: ^14.7.10
-
-  # Google AI / Gemini Flash
-  google_generative_ai: ^0.4.0
 
   # UI & Fonts
   google_fonts: ^6.1.0

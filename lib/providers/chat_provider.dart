@@ -3,13 +3,14 @@ import '../models/checkin_model.dart';
 import '../models/patient_model.dart';
 import '../services/gemini_service.dart';
 import '../services/firestore_service.dart';
+import '../services/notification_service.dart';
 
 class ChatMessage {
-  final String text;
-  final bool isUser;
-  final String? risk;
+  final String       text;
+  final bool         isUser;
+  final String?      risk;
   final List<String> actions;
-  final DateTime timestamp;
+  final DateTime     timestamp;
 
   ChatMessage({
     required this.text,
@@ -22,17 +23,17 @@ class ChatMessage {
 
 class ChatProvider extends ChangeNotifier {
   final _gemini = GeminiService();
-  final _db = FirestoreService();
+  final _db     = FirestoreService();
 
   final List<ChatMessage> _messages = [];
-  bool _thinking = false;
-  bool _sessionReady = false;
-  String? _todayQuestion;
-  PatientModel? _patient;
+  bool           _thinking     = false;
+  bool           _sessionReady = false;
+  String?        _todayQuestion;
+  PatientModel?  _patient;
 
-  List<ChatMessage> get messages => _messages;
-  bool get thinking => _thinking;
-  String? get todayQuestion => _todayQuestion;
+  List<ChatMessage> get messages      => _messages;
+  bool              get thinking      => _thinking;
+  String?           get todayQuestion => _todayQuestion;
 
   Future<void> initSession(PatientModel patient) async {
     if (_sessionReady) return;
@@ -40,10 +41,10 @@ class ChatProvider extends ChangeNotifier {
 
     if (patient.diagnosis != null) {
       await _gemini.initSession(
-        name: patient.name,
-        diagnosis: patient.diagnosis!,
+        name:           patient.name,
+        diagnosis:      patient.diagnosis!,
         daysSinceVisit: patient.daysSinceVisit,
-        medications: [],
+        medications:    [],
       );
       _todayQuestion = await _gemini.generateCheckInQuestion(
         patient.diagnosis!,
@@ -53,9 +54,9 @@ class ChatProvider extends ChangeNotifier {
 
     _sessionReady = true;
 
-    // Welcome message
     _messages.add(ChatMessage(
-      text: 'Hi ${patient.name}! I\'m your CareLoop AI. ${_todayQuestion ?? "How are you feeling today?"}',
+      text:   'Hi ${patient.name}! I\'m your CareLoop AI. '
+          '${_todayQuestion ?? "How are you feeling today?"}',
       isUser: false,
     ));
     notifyListeners();
@@ -71,25 +72,24 @@ class ChatProvider extends ChangeNotifier {
     final response = await _gemini.sendMessage(text);
 
     _messages.add(ChatMessage(
-      text: response.message,
-      isUser: false,
-      risk: response.risk.name,
+      text:    response.message,
+      isUser:  false,
+      risk:    response.risk.name,
       actions: response.actions,
     ));
 
     _thinking = false;
     notifyListeners();
 
-    // Persist to Firestore & trigger actions
     if (_patient != null) {
       await _db.saveCheckIn(CheckIn(
-        id: '',
-        patientId: _patient!.id,
-        userMessage: text,
-        aiResponse: response.message,
-        risk: response.risk.name,
+        id:               '',
+        patientId:        _patient!.id,
+        userMessage:      text,
+        aiResponse:       response.message,
+        risk:             response.risk.name,
         actionsTriggered: response.actions,
-        createdAt: DateTime.now(),
+        createdAt:        DateTime.now(),
       ));
 
       for (final action in response.actions) {
@@ -104,23 +104,26 @@ class ChatProvider extends ChangeNotifier {
       case 'alert_doctor':
         await _db.createAlert(
           patientId: _patient!.id,
-          type: 'doctor_alert',
-          message: 'Patient reported: $context',
-          clinicId: 'clinic_main',
+          type:      'doctor_alert',
+          message:   'Patient reported: $context',
+          clinicId:  'clinic_main',
         );
         break;
       case 'suggest_revisit':
         await _db.createAlert(
           patientId: _patient!.id,
-          type: 'revisit',
-          message: 'AI recommends revisit: $context',
+          type:      'revisit',
+          message:   'AI recommends revisit: $context',
+        );
+        break;
+      case 'remind_medication':
+      // Fire an immediate local notification to the patient
+        await NotificationService.showImmediateReminder(
+          'Please take your medication now as recommended by your care AI.',
         );
         break;
       case 'increase_priority':
-        // Handled via QueueProvider if patient is in queue
-        break;
-      case 'remind_medication':
-        // Push notification handled by Firebase Messaging
+      // Handled via QueueProvider if patient is in queue
         break;
     }
   }

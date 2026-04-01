@@ -8,6 +8,7 @@ plugins {
 android {
     namespace "com.careloop.app"
     compileSdk 36
+    ndkVersion "27.0.12077973"
 
     defaultConfig {
         applicationId "com.careloop.app"
@@ -16,16 +17,12 @@ android {
         versionCode 1
         versionName "1.0.0"
         multiDexEnabled true
-
-        // Restrict NDK to x86_64 and x86 for emulator builds
-        ndk {
-            abiFilters "x86_64", "x86", "armeabi-v7a"
-        }
     }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
     }
 
     kotlinOptions {
@@ -51,4 +48,5 @@ dependencies {
     implementation "com.google.firebase:firebase-firestore-ktx"
     implementation "com.google.firebase:firebase-messaging-ktx"
     implementation "androidx.multidex:multidex:2.0.1"
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 }

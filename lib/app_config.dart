@@ -15,7 +15,7 @@
 class AppConfig {
   // ─── Gemini ─────────────────────────────────────────────────────────────
   // Get your key from: https://aistudio.google.com/app/apikey
-  static const String geminiApiKey = 'PASTE_GEMINI_API_KEY_HERE';
+  static const String geminiApiKey = 'AIzaSyAODsBaJ_Gs6WOCuj0AiK69lB2x4eCAjQc';
 
   // ─── Clinic ──────────────────────────────────────────────────────────────
   // Default clinic ID used for the queue. Change for multi-clinic support.

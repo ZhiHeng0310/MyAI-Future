@@ -1,172 +1,308 @@
 import 'dart:convert';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:http/http.dart' as http;
 import '../app_config.dart';
 
-/// CareLoop AI Service — Gemini Flash integration.
+/// CareLoop AI — Gemini REST with rule-based fallback.
 ///
-/// Token optimisation strategy:
-/// 1. System instruction loaded ONCE per session (Flash context caching).
-/// 2. JSON-only output — no second "formatting" round-trip needed.
-/// 3. maxOutputTokens: 300 — caps cost on short check-in responses.
-/// 4. One-shot calls for triage & question generation (zero history overhead).
-/// 5. Temperature 0.3 — consistent, factual, fewer bad regenerations.
-/// 6. Compact prompt syntax (Day3,Dx:Flu) saves ~50 tokens per call.
+/// Model: gemini-2.0-flash-lite  (generous free quota)
+/// Fallback: keyword-based responder — activates on 429/quota so app never breaks.
 class GeminiService {
-  // ─── System Instruction ────────────────────────────────────────────────────
-  // Sent ONCE when the chat session initialises, cached across turns.
-  // Kept deliberately short — every extra token here multiplies per cached hit.
+  static const String _model   = 'gemini-2.0-flash-lite';
+  static const String _baseUrl =
+      'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent';
+
   static const String _systemInstruction = '''
 You are CareLoop, a concise medical recovery assistant.
 Rules:
-- Reply ONLY in JSON: {"message":"<reply>","risk":"low|medium|high","actions":[]}
+- Reply ONLY in valid JSON: {"message":"<reply>","risk":"low|medium|high","actions":[]}
 - Actions list may contain: "alert_doctor","suggest_revisit","increase_priority","remind_medication"
 - message: ≤80 words, plain language, no markdown.
 - risk: low=recovering well, medium=slow/uncertain, high=worsening/emergency.
-- Never diagnose or prescribe. When uncertain, use suggest_revisit.
+- Never diagnose or prescribe. When uncertain, escalate with suggest_revisit.
 ''';
 
-  late final GenerativeModel _model;
-  late final ChatSession _session;
+  final List<Map<String, dynamic>> _history = [];
   bool _sessionInitialised = false;
 
-  GeminiService() {
-    _model = GenerativeModel(
-      model: AppConfig.geminiModel,
-      apiKey: AppConfig.geminiApiKey,
-      generationConfig: GenerationConfig(
-        temperature: 0.3,       // Low = factual, consistent
-        maxOutputTokens: 300,   // Enough for JSON + short message
-        topP: 0.85,
-      ),
-      systemInstruction: Content.system(_systemInstruction),
-    );
-    _session = _model.startChat();
-  }
-
-  // ─── Session Init ─────────────────────────────────────────────────────────
-  // Call ONCE per patient session. Sends patient context as the first message
-  // so it is cached — subsequent turns do NOT re-send this context.
-
+  // ── Session init ──────────────────────────────────────────────────────────
   Future<void> initSession({
-    required String name,
-    required String diagnosis,
-    required int daysSinceVisit,
+    required String       name,
+    required String       diagnosis,
+    required int          daysSinceVisit,
     required List<String> medications,
   }) async {
     if (_sessionInitialised) return;
-
-    // Compact format intentional — minimises tokens while preserving context
-    final ctx = 'Patient:$name,'
-        'Dx:$diagnosis,'
-        'Day$daysSinceVisit,'
-        'Meds:${medications.isEmpty ? "none" : medications.join(",")}.'
-        ' Acknowledge with {"message":"ready","risk":"low","actions":[]}.';
-
-    await _session.sendMessage(Content.text(ctx));
+    final ctx = 'Patient:$name, Dx:$diagnosis, Day$daysSinceVisit, '
+        'Meds:${medications.isEmpty ? "none" : medications.join(",")}. '
+        'Acknowledge with {"message":"ready","risk":"low","actions":[]}.';
+    _history.add({'role': 'user',  'parts': [{'text': ctx}]});
+    _history.add({'role': 'model', 'parts': [{'text': '{"message":"ready","risk":"low","actions":[]}'}]});
     _sessionInitialised = true;
   }
 
-  // ─── Multi-turn Check-in ──────────────────────────────────────────────────
-  // Each call builds on session history. History tokens grow per turn — keep
-  // sessions short (daily check-in only, not open-ended chat).
-
+  // ── Multi-turn check-in ───────────────────────────────────────────────────
   Future<GeminiResponse> sendMessage(String userMessage) async {
-    try {
-      final response = await _session.sendMessage(Content.text(userMessage));
-      return GeminiResponse.fromRaw(response.text ?? '{}');
-    } catch (e) {
-      return GeminiResponse.error('Connection issue. Please try again.');
-    }
+    _history.add({'role': 'user', 'parts': [{'text': userMessage}]});
+    final response = await _callGemini(
+        contents: List<Map<String, dynamic>>.from(_history));
+    _history.add({'role': 'model', 'parts': [{'text': response.rawText}]});
+    return response;
   }
 
-  // ─── One-shot: Symptom Triage ─────────────────────────────────────────────
-  // No session history — zero history token cost. Used at queue join time.
-
-  Future<GeminiResponse> analyzeSymptoms(
-    List<String> symptoms, {
-    String? diagnosis,
-  }) async {
-    // Compact prompt: "Symptoms:Fever,Cough.Dx:Flu.Assess risk and actions."
+  // ── One-shot: symptom triage ──────────────────────────────────────────────
+  Future<GeminiResponse> analyzeSymptoms(List<String> symptoms,
+      {String? diagnosis}) async {
     final prompt = 'Symptoms:${symptoms.join(",")}.'
-        '${diagnosis != null ? "Dx:$diagnosis." : ""}'
-        'Assess risk and actions.';
+        '${diagnosis != null ? " Dx:$diagnosis." : ""}'
+        ' Assess risk and suggest actions. Reply in JSON only.';
+    return _callGemini(contents: [
+      {'role': 'user', 'parts': [{'text': prompt}]}
+    ]);
+  }
+
+  // ── One-shot: daily check-in question ─────────────────────────────────────
+  Future<String> generateCheckInQuestion(
+      String diagnosis, int daysSinceVisit) async {
     try {
-      final r = await _model.generateContent([Content.text(prompt)]);
-      return GeminiResponse.fromRaw(r.text ?? '{}');
-    } catch (e) {
-      return GeminiResponse.error('Analysis unavailable.');
+      final prompt =
+          'Day$daysSinceVisit post-visit, Dx:$diagnosis. '
+          'Write ONE check-in question ≤15 words. Question only, no JSON.';
+      final text = await _rawCall(
+        contents:  [{'role': 'user', 'parts': [{'text': prompt}]}],
+        maxTokens: 40,
+      );
+      return text.trim().isNotEmpty
+          ? text.trim()
+          : _defaultQuestion(daysSinceVisit);
+    } catch (_) {
+      return _defaultQuestion(daysSinceVisit);
     }
   }
 
-  // ─── One-shot: Daily Check-in Question ───────────────────────────────────
-  // Output strictly capped at 40 tokens — just a single question.
-
-  Future<String> generateCheckInQuestion(
-    String diagnosis,
-    int daysSinceVisit,
-  ) async {
-    final prompt = 'Day$daysSinceVisit post-visit,Dx:$diagnosis.'
-        'Write ONE check-in question ≤15 words. Question only, no JSON.';
-    try {
-      final r = await _model.generateContent(
-        [Content.text(prompt)],
-        generationConfig: GenerationConfig(
-          maxOutputTokens: 40,
-          temperature: 0.5,
-        ),
-      );
-      return r.text?.trim() ?? 'How are you feeling today?';
-    } catch (_) {
-      return 'How are you feeling today?';
+  // ── HTTP caller ───────────────────────────────────────────────────────────
+  Future<GeminiResponse> _callGemini({
+    required List<Map<String, dynamic>> contents,
+    int maxTokens = 300,
+  }) async {
+    // No key → straight to fallback
+    if (AppConfig.geminiApiKey.isEmpty ||
+        AppConfig.geminiApiKey == 'PASTE_GEMINI_API_KEY_HERE') {
+      return _ruleBasedResponse(_lastUserText(contents));
     }
+
+    try {
+      final text = await _rawCall(contents: contents, maxTokens: maxTokens);
+      return GeminiResponse.fromRaw(text);
+    } on _QuotaException {
+      // Quota hit — silent fallback, no error shown to user
+      return _ruleBasedResponse(_lastUserText(contents));
+    } on _GeminiException catch (e) {
+      return GeminiResponse.error(e.message);
+    } catch (_) {
+      return _ruleBasedResponse(_lastUserText(contents));
+    }
+  }
+
+  Future<String> _rawCall({
+    required List<Map<String, dynamic>> contents,
+    int maxTokens = 300,
+  }) async {
+    final uri  = Uri.parse('$_baseUrl?key=${AppConfig.geminiApiKey}');
+    final body = jsonEncode({
+      'system_instruction': {'parts': [{'text': _systemInstruction}]},
+      'contents': contents,
+      'generationConfig': {
+        'temperature':     0.3,
+        'maxOutputTokens': maxTokens,
+        'topP':            0.85,
+      },
+    });
+
+    final res = await http
+        .post(uri, headers: {'Content-Type': 'application/json'}, body: body)
+        .timeout(const Duration(seconds: 20));
+
+    switch (res.statusCode) {
+      case 200:
+        final decoded    = jsonDecode(res.body) as Map<String, dynamic>;
+        final candidates = decoded['candidates'] as List?;
+        if (candidates == null || candidates.isEmpty) {
+          throw _GeminiException('Empty response from Gemini.');
+        }
+        final parts =
+        (candidates[0]['content'] as Map?)?['parts'] as List?;
+        return (parts?.first?['text'] ?? '').toString();
+      case 429:
+        throw _QuotaException();
+      case 403:
+        throw _GeminiException(
+            'API key invalid or Gemini not enabled (403). '
+                'Visit aistudio.google.com/app/apikey');
+      case 404:
+        throw _GeminiException(
+            'Model "$_model" not found (404). '
+                'Check your API key has Gemini access.');
+      default:
+        final snippet = res.body.length > 200
+            ? res.body.substring(0, 200)
+            : res.body;
+        throw _GeminiException('Gemini ${res.statusCode}: $snippet');
+    }
+  }
+
+  // ── Rule-based fallback ───────────────────────────────────────────────────
+  GeminiResponse _ruleBasedResponse(String input) {
+    final t = input.toLowerCase();
+
+    if (_any(t, [
+      'chest pain', 'can\'t breathe', 'difficulty breathing',
+      'shortness of breath', 'fainted', 'unconscious', 'severe pain',
+      'emergency', 'heart attack', 'stroke',
+    ])) {
+      return GeminiResponse(
+        message: 'This sounds serious. Please seek immediate medical '
+            'attention or call emergency services. '
+            'Your care team has been alerted.',
+        risk:    RiskLevel.high,
+        actions: ['alert_doctor', 'increase_priority'],
+        rawText: '',
+      );
+    }
+
+    if (_any(t, [
+      'worse', 'worsening', 'not improving', 'getting bad',
+      'high fever', 'vomiting', 'can\'t eat', 'can\'t sleep',
+      'extremely', 'very worried', 'concerned',
+    ])) {
+      return GeminiResponse(
+        message: 'Thank you for letting me know. Your symptoms need '
+            'attention — I\'ve flagged this for your doctor. '
+            'Please rest, stay hydrated, and avoid strenuous activity.',
+        risk:    RiskLevel.medium,
+        actions: ['suggest_revisit'],
+        rawText: '',
+      );
+    }
+
+    if (_any(t, [
+      'medication', 'medicine', 'pill', 'tablet', 'dose',
+      'forgot', 'missed', 'didn\'t take', 'skipped',
+    ])) {
+      return GeminiResponse(
+        message: 'It\'s important to take your medication as prescribed. '
+            'I\'ll send you a reminder now. If you missed a dose, '
+            'take it as soon as possible unless your next dose is soon.',
+        risk:    RiskLevel.low,
+        actions: ['remind_medication'],
+        rawText: '',
+      );
+    }
+
+    if (_any(t, [
+      'better', 'good', 'great', 'fine', 'well', 'improving',
+      'recovered', 'normal', 'okay', 'ok', 'much better',
+    ])) {
+      return GeminiResponse(
+        message: 'That\'s great to hear! Keep following your recovery plan, '
+            'take your medications on time, rest well, and stay hydrated. '
+            'You\'re doing well.',
+        risk:    RiskLevel.low,
+        actions: [],
+        rawText: '',
+      );
+    }
+
+    if (_any(t, [
+      'tired', 'fatigue', 'exhausted', 'weak', 'dizzy',
+      'headache', 'nausea', 'stomach',
+    ])) {
+      return GeminiResponse(
+        message: 'Those symptoms are common during recovery. '
+            'Make sure to rest, drink plenty of fluids, and eat light meals. '
+            'If they persist or worsen, please contact your doctor.',
+        risk:    RiskLevel.low,
+        actions: [],
+        rawText: '',
+      );
+    }
+
+    // Generic
+    return GeminiResponse(
+      message: 'Thank you for checking in. Continue resting and following '
+          'your medication schedule. If you notice any new or worsening '
+          'symptoms, don\'t hesitate to reach out or visit the clinic.',
+      risk:    RiskLevel.low,
+      actions: [],
+      rawText: '',
+    );
+  }
+
+  bool _any(String text, List<String> keywords) =>
+      keywords.any((k) => text.contains(k));
+
+  String _lastUserText(List<Map<String, dynamic>> contents) {
+    for (final c in contents.reversed) {
+      if (c['role'] == 'user') {
+        final parts = c['parts'] as List?;
+        return (parts?.first?['text'] ?? '') as String;
+      }
+    }
+    return '';
+  }
+
+  String _defaultQuestion(int daysSinceVisit) {
+    if (daysSinceVisit <= 1) return 'How are you feeling after your visit today?';
+    if (daysSinceVisit <= 3) return 'How are your symptoms compared to yesterday?';
+    if (daysSinceVisit <= 7) return 'How is your recovery going this week?';
+    return 'How have you been feeling lately?';
   }
 }
 
-// ─── Response Model ──────────────────────────────────────────────────────────
+// ─── Exceptions ───────────────────────────────────────────────────────────────
+class _GeminiException  implements Exception { final String message; const _GeminiException(this.message); }
+class _QuotaException   implements Exception {}
 
+// ─── Response model ───────────────────────────────────────────────────────────
 enum RiskLevel { low, medium, high }
 
 class GeminiResponse {
-  final String message;
-  final RiskLevel risk;
+  final String       message;
+  final RiskLevel    risk;
   final List<String> actions;
-  final bool isError;
+  final bool         isError;
+  final String       rawText;
 
   const GeminiResponse({
     required this.message,
     required this.risk,
     required this.actions,
     this.isError = false,
+    this.rawText = '',
   });
 
   factory GeminiResponse.fromRaw(String raw) {
     try {
       final cleaned = raw.replaceAll(RegExp(r'```json?|```'), '').trim();
-      final start = cleaned.indexOf('{');
-      final end = cleaned.lastIndexOf('}');
+      final start   = cleaned.indexOf('{');
+      final end     = cleaned.lastIndexOf('}');
       if (start == -1 || end == -1) throw const FormatException('no JSON');
       final map = jsonDecode(cleaned.substring(start, end + 1))
-          as Map<String, dynamic>;
+      as Map<String, dynamic>;
       return GeminiResponse(
         message: (map['message'] as String?)?.trim() ?? 'Update received.',
-        risk: _parseRisk(map['risk']),
+        risk:    _parseRisk(map['risk']),
         actions: List<String>.from((map['actions'] as List?) ?? []),
+        rawText: raw,
       );
     } catch (_) {
       return GeminiResponse(
-        message: raw.isNotEmpty ? raw : 'Update received.',
-        risk: RiskLevel.low,
-        actions: [],
-      );
+          message: raw.isNotEmpty ? raw : 'Update received.',
+          risk: RiskLevel.low, actions: [], rawText: raw);
     }
   }
 
-  factory GeminiResponse.error(String msg) => GeminiResponse(
-        message: msg,
-        risk: RiskLevel.low,
-        actions: [],
-        isError: true,
-      );
+  factory GeminiResponse.error(String msg) =>
+      GeminiResponse(message: msg, risk: RiskLevel.low, actions: [], isError: true);
 
   static RiskLevel _parseRisk(dynamic v) {
     switch (v?.toString().toLowerCase()) {

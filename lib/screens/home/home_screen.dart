@@ -17,44 +17,45 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0;
+  int  _currentIndex = 0;
+  bool _initialized  = false;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _init());
-  }
-
-  void _init() {
-    final auth = context.read<AuthProvider>();
-    final patient = auth.patient;
-    if (patient == null) return;
-
-    context.read<QueueProvider>().startListening();
-    context.read<MedicationProvider>().startListening(patient.id);
-    context.read<ChatProvider>().initSession(patient);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final patient = Provider.of<AuthProvider>(context).patient;
+    if (patient != null && !_initialized) {
+      _initialized = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        // Pass patientId so QueueProvider can restore any existing queue entry
+        context.read<QueueProvider>().startListening(patient.id);
+        context.read<MedicationProvider>().startListening(patient.id);
+        context.read<ChatProvider>().initSession(patient);
+      });
+    }
   }
 
   static const _navItems = [
     NavigationDestination(
-      icon: Icon(Icons.home_outlined),
+      icon:         Icon(Icons.home_outlined),
       selectedIcon: Icon(Icons.home_rounded),
-      label: 'Home',
+      label:        'Home',
     ),
     NavigationDestination(
-      icon: Icon(Icons.queue_outlined),
+      icon:         Icon(Icons.queue_outlined),
       selectedIcon: Icon(Icons.queue_rounded),
-      label: 'Queue',
+      label:        'Queue',
     ),
     NavigationDestination(
-      icon: Icon(Icons.chat_bubble_outline_rounded),
+      icon:         Icon(Icons.chat_bubble_outline_rounded),
       selectedIcon: Icon(Icons.chat_bubble_rounded),
-      label: 'AI Care',
+      label:        'AI Care',
     ),
     NavigationDestination(
-      icon: Icon(Icons.medication_outlined),
+      icon:         Icon(Icons.medication_outlined),
       selectedIcon: Icon(Icons.medication_rounded),
-      label: 'Meds',
+      label:        'Meds',
     ),
   ];
 
@@ -70,13 +71,13 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: screens),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
+        selectedIndex:         _currentIndex,
         onDestinationSelected: (i) => setState(() => _currentIndex = i),
-        destinations: _navItems,
-        backgroundColor: Colors.white,
-        indicatorColor: const Color(0xFF00C896).withOpacity(0.15),
-        shadowColor: Colors.black12,
-        elevation: 8,
+        destinations:          _navItems,
+        backgroundColor:       Colors.white,
+        indicatorColor:        const Color(0xFF00C896).withOpacity(0.15),
+        shadowColor:           Colors.black12,
+        elevation:             8,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       ),
     );

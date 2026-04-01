@@ -1,39 +1,73 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/patient_model.dart';
+import '../models/doctor_model.dart';
 import '../services/firestore_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final _auth = FirebaseAuth.instance;
-  final _db = FirestoreService();
+  final _db   = FirestoreService();
 
-  User? _user;
+  User?         _user;
   PatientModel? _patient;
-  bool _loading = false;
+  DoctorModel?  _doctor;
+
+  // 'patient' | 'doctor' | 'unknown'
+  String _role           = 'unknown';
+  bool   _profileLoading = false;  // true while we're fetching Firestore profile
+  bool   _loading        = false;  // true during signIn / register button press
   String? _error;
 
-  User? get user => _user;
-  PatientModel? get patient => _patient;
-  bool get loading => _loading;
-  String? get error => _error;
-  bool get isLoggedIn => _user != null;
+  User?         get user           => _user;
+  PatientModel? get patient        => _patient;
+  DoctorModel?  get doctor         => _doctor;
+  bool          get isLoggedIn     => _user != null;
+  bool          get isDoctor       => _role == 'doctor';
+  bool          get profileLoading => _profileLoading;
+  bool          get loading        => _loading;
+  String?       get error          => _error;
 
   AuthProvider() {
+    // Re-runs every time Firebase auth state changes (sign in, sign out, app start)
     _auth.authStateChanges().listen((u) async {
       _user = u;
-      if (u != null) await _loadPatient(u.uid);
+      if (u != null) {
+        _profileLoading = true;
+        notifyListeners();
+        await _loadProfile(u.uid);
+        _profileLoading = false;
+      } else {
+        // Signed out — clear everything
+        _patient        = null;
+        _doctor         = null;
+        _role           = 'unknown';
+        _profileLoading = false;
+      }
       notifyListeners();
     });
   }
 
-  Future<void> _loadPatient(String uid) async {
-    _patient = await _db.getPatient(uid);
-    notifyListeners();
+  // ─── Profile loader ───────────────────────────────────────────────────────
+  Future<void> _loadProfile(String uid) async {
+    // Check doctors collection first
+    final doc = await _db.getDoctor(uid);
+    if (doc != null) {
+      _doctor = doc;
+      _role   = 'doctor';
+      return;
+    }
+    // Fall back to patients
+    final patient = await _db.getPatient(uid);
+    if (patient != null) {
+      _patient = patient;
+      _role    = 'patient';
+    }
   }
 
+  // ─── Sign in (works for both patients and doctors) ────────────────────────
   Future<bool> signIn(String email, String password) async {
     _loading = true;
-    _error = null;
+    _error   = null;
     notifyListeners();
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
@@ -47,28 +81,24 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> register({
+  // ─── Register patient ─────────────────────────────────────────────────────
+  Future<bool> registerPatient({
     required String email,
     required String password,
     required String name,
     String? phone,
   }) async {
     _loading = true;
-    _error = null;
+    _error   = null;
     notifyListeners();
     try {
       final cred = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+          email: email, password: password);
       final patient = PatientModel(
-        id: cred.user!.uid,
-        name: name,
-        email: email,
-        phone: phone,
-      );
+          id: cred.user!.uid, name: name, email: email, phone: phone);
       await _db.savePatient(patient);
       _patient = patient;
+      _role    = 'patient';
       return true;
     } on FirebaseAuthException catch (e) {
       _error = _friendlyError(e.code);
@@ -79,19 +109,63 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> signOut() async {
-    await _auth.signOut();
-    _patient = null;
+  // ─── Register doctor ──────────────────────────────────────────────────────
+  /// [clinicCode] must match AppConfig.doctorRegistrationCode to prevent
+  /// random users from self-registering as doctors.
+  Future<bool> registerDoctor({
+    required String email,
+    required String password,
+    required String name,
+    required String doctorId,
+    required String clinicCode,
+    String? specialization,
+  }) async {
+    if (clinicCode.trim().toUpperCase() != 'CARELOOP-DOC-2024') {
+      _error = 'Invalid clinic registration code.';
+      notifyListeners();
+      return false;
+    }
+    _loading = true;
+    _error   = null;
     notifyListeners();
+    try {
+      final cred = await _auth.createUserWithEmailAndPassword(
+          email: email, password: password);
+      final doctor = DoctorModel(
+        id:             cred.user!.uid,
+        name:           name,
+        email:          email,
+        doctorId:       doctorId,
+        specialization: specialization,
+      );
+      await _db.saveDoctor(doctor);
+      _doctor = doctor;
+      _role   = 'doctor';
+      return true;
+    } on FirebaseAuthException catch (e) {
+      _error = _friendlyError(e.code);
+      return false;
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
   }
 
+  // ─── Sign out ─────────────────────────────────────────────────────────────
+  Future<void> signOut() async {
+    await _auth.signOut();
+    // authStateChanges listener fires → clears patient/doctor/role
+  }
+
+  // ─── Error messages ───────────────────────────────────────────────────────
   String _friendlyError(String code) {
     switch (code) {
-      case 'user-not-found':    return 'No account found with this email.';
-      case 'wrong-password':    return 'Incorrect password.';
-      case 'email-already-in-use': return 'Email already registered.';
-      case 'weak-password':     return 'Password must be at least 6 characters.';
-      default:                  return 'Authentication failed. Please try again.';
+      case 'user-not-found':        return 'No account found with this email.';
+      case 'wrong-password':        return 'Incorrect password.';
+      case 'invalid-credential':    return 'Incorrect email or password.';
+      case 'email-already-in-use':  return 'Email already registered.';
+      case 'weak-password':         return 'Password must be at least 6 characters.';
+      default:                      return 'Authentication failed. Please try again.';
     }
   }
 }
