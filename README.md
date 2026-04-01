@@ -1,30 +1,6 @@
-# 🏥 CareLoop v2 — Flutter + Firebase (Manual Config)
+# 🏥 CareLoop
 
 > Agentic AI Patient Care System — **Flutter · Firebase · Gemini Flash**  
-> This version uses **manual Firebase configuration** via the web console. No CLI required.
-
----
-
-## ⚡ Quick Start (3 steps)
-
-### 1. Fill in your Firebase config
-Open `lib/firebase_options.dart` — replace every `PASTE_..._HERE` with values from  
-**Firebase Console → Project Settings → Your apps**
-
-> 📖 Full step-by-step: see **`firebase_setup.md`**
-
-### 2. Add your Gemini key
-Open `lib/app_config.dart`:
-```dart
-static const String geminiApiKey = 'PASTE_GEMINI_API_KEY_HERE';
-```
-Get key at: https://aistudio.google.com/app/apikey
-
-### 3. Run
-```bash
-flutter pub get
-flutter run
-```
 
 ---
 
