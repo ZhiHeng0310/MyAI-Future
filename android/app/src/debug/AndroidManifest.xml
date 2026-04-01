@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.careloop.app">
+    <!-- Debug builds: allow cleartext traffic for local dev tools -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <application android:usesCleartextTraffic="true"/>
+</manifest>

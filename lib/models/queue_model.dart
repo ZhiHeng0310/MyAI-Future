@@ -1,0 +1,47 @@
+enum QueueStatus { waiting, called, inProgress, done }
+
+class QueueEntry {
+  final String id;
+  final String patientId;
+  final String patientName;
+  final List<String> symptoms;
+  final int priority;
+  final QueueStatus status;
+  final DateTime joinedAt;
+
+  const QueueEntry({
+    required this.id,
+    required this.patientId,
+    required this.patientName,
+    required this.symptoms,
+    required this.priority,
+    required this.status,
+    required this.joinedAt,
+  });
+
+  int get estimatedWaitMinutes => priority > 7 ? 5 : priority > 4 ? 15 : 30;
+
+  factory QueueEntry.fromMap(Map<String, dynamic> m, String id) => QueueEntry(
+        id: id,
+        patientId: m['patientId'] ?? '',
+        patientName: m['patientName'] ?? '',
+        symptoms: List<String>.from(m['symptoms'] ?? []),
+        priority: (m['priority'] as num?)?.toInt() ?? 5,
+        status: QueueStatus.values.firstWhere(
+          (e) => e.name == m['status'],
+          orElse: () => QueueStatus.waiting,
+        ),
+        joinedAt: m['joinedAt'] != null
+            ? (m['joinedAt'] as dynamic).toDate()
+            : DateTime.now(),
+      );
+
+  Map<String, dynamic> toMap() => {
+        'patientId': patientId,
+        'patientName': patientName,
+        'symptoms': symptoms,
+        'priority': priority,
+        'status': status.name,
+        'joinedAt': joinedAt,
+      };
+}

@@ -1,0 +1,39 @@
+name: careloop
+description: CareLoop - Agentic AI Patient Care System
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Firebase — manual web console config (no FlutterFire CLI needed)
+  firebase_core: ^2.27.0
+  firebase_auth: ^4.17.0
+  cloud_firestore: ^4.15.0
+  firebase_messaging: ^14.7.10
+
+  # Google AI / Gemini Flash
+  google_generative_ai: ^0.4.0
+
+  # UI & Fonts
+  google_fonts: ^6.1.0
+  flutter_animate: ^4.5.0
+  fl_chart: ^0.67.0
+
+  # State & Utils
+  provider: ^6.1.2
+  shared_preferences: ^2.2.2
+  intl: ^0.19.0
+  uuid: ^4.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

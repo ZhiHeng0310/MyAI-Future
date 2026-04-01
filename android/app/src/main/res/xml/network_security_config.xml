@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <!-- Block cleartext; all Firebase & Gemini traffic uses HTTPS -->
+        <domain includeSubdomains="true">firebaseio.com</domain>
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">generativelanguage.googleapis.com</domain>
+    </domain-config>
+</network-security-config>
