@@ -43,16 +43,20 @@ class NotificationService {
     tz.setLocalLocation(tz.getLocation('Asia/Kuala_Lumpur'));
 
     // ✅ FIX 1: initialize() takes a positional argument, not named 'settings:'
-    await _plugin.initialize(
-      const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS:     DarwinInitializationSettings(
-          requestAlertPermission: true,
-          requestBadgePermission: true,
-          requestSoundPermission: true,
-        ),
-      ),
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
     );
+
+    const initializationSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
+
+    await _plugin.initialize(settings: initializationSettings);
 
     final androidImpl = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
@@ -89,28 +93,24 @@ class NotificationService {
       // ✅ FIX 2: the 4th and 5th arguments of zonedSchedule() are positional,
       // not named. Remove 'scheduledDate:' and 'notificationDetails:' labels.
       await _plugin.zonedSchedule(
-        id,
-        '💊 Medication Reminder',
-        'Time to take $medicationName ($dosage)',
-        scheduled,                                    // positional, no label
-        NotificationDetails(android: _medChannel),    // positional, no label
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-        UILocalNotificationDateInterpretation.absoluteTime,
+        id: id,
+        title: '💊 Medication Reminder',
+        body: 'Time to take $medicationName ($dosage)',
+        scheduledDate: scheduled,
+        notificationDetails: NotificationDetails(android: _medChannel),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         matchDateTimeComponents: DateTimeComponents.time,
       );
     } catch (_) {
       try {
         // Fallback: inexact alarm (for devices that deny exact alarm permission)
         await _plugin.zonedSchedule(
-          id,
-          '💊 Medication Reminder',
-          'Time to take $medicationName ($dosage)',
-          scheduled,
-          NotificationDetails(android: _medChannel),
-          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
+          id: id,
+          title: '💊 Medication Reminder',
+          body: 'Time to take $medicationName ($dosage)',
+          scheduledDate: scheduled,
+          notificationDetails: NotificationDetails(android: _medChannel),
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           matchDateTimeComponents: DateTimeComponents.time,
         );
       } catch (e) {
@@ -124,10 +124,10 @@ class NotificationService {
       String medName, String dosage) async {
     await init();
     await _plugin.show(
-      _stableId('remind_$medName'),
-      '💊 Medication Reminder',
-      'CareLoop AI: Please take your $medName ($dosage) now.',
-      NotificationDetails(android: _medChannel),
+      id: 10000 + _stableId('remind_$medName'),
+      title: '💊 Medication Reminder',
+      body: 'CareLoop AI: Please take your $medName ($dosage) now.',
+      notificationDetails: NotificationDetails(android: _medChannel),
     );
   }
 
@@ -135,10 +135,10 @@ class NotificationService {
   static Future<void> showImmediateReminder(String message) async {
     await init();
     await _plugin.show(
-      0,
-      '💊 CareLoop Reminder',
-      message,
-      NotificationDetails(android: _medChannel),
+      id: 20000,
+      title: '💊 CareLoop Reminder',
+      body: message,
+      notificationDetails: NotificationDetails(android: _medChannel),
     );
   }
 
@@ -146,10 +146,10 @@ class NotificationService {
   static Future<void> showHealthAlert(String message) async {
     await init();
     await _plugin.show(
-      1,
-      '🚨 CareLoop Health Alert',
-      message,
-      NotificationDetails(android: _alertChannel),
+      id: 20001,
+      title: '🚨 CareLoop Health Alert',
+      body: message,
+      notificationDetails: NotificationDetails(android: _alertChannel),
     );
   }
 
@@ -160,21 +160,15 @@ class NotificationService {
   }) async {
     await init();
     await _plugin.show(
-      2,
-      title,
-      body,
-      NotificationDetails(android: _queueChannel),
+      id: 20002,
+      title: title,
+      body: body,
+      notificationDetails: NotificationDetails(android: _queueChannel),
     );
   }
 
   // ── Cancel helpers ────────────────────────────────────────────────────────
-  static Future<void> cancelReminder(int id) => _plugin.cancel(id);
-
-  static Future<void> cancelAllForMed(String medId, int slotCount) async {
-    for (int i = 0; i < slotCount; i++) {
-      await _plugin.cancel(medNotificationId(medId, i));
-    }
-  }
+  static Future<void> cancelReminder(int id) => _plugin.cancel(id: id);
 
   // ── Stable integer IDs ────────────────────────────────────────────────────
   static int medNotificationId(String medId, int slotIndex) =>
