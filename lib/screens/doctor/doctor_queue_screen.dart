@@ -18,9 +18,7 @@ class DoctorQueueScreen extends StatelessWidget {
           return const Center(
               child: CircularProgressIndicator(color: Color(0xFF6C63FF)));
         }
-
         final entries = snapshot.data ?? [];
-
         if (entries.isEmpty) {
           return Center(
             child: Column(
@@ -41,49 +39,51 @@ class DoctorQueueScreen extends StatelessWidget {
                         fontSize: 18, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
                 Text('No patients waiting right now.',
-                    style: GoogleFonts.dmSans(
-                        color: const Color(0xFF667085))),
+                    style: GoogleFonts.dmSans(color: const Color(0xFF667085))),
               ],
             ),
           );
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: entries.length,
-          itemBuilder: (ctx, i) {
-            final e = entries[i];
-            return _QueueCard(
-              entry:    e,
-              position: i + 1,
-              clinicId: clinicId,
-              db:       db,
-            );
-          },
+          padding:     const EdgeInsets.all(16),
+          itemCount:   entries.length,
+          itemBuilder: (_, i) => _QueueCard(
+            entry:    entries[i],
+            position: i + 1,
+            total:    entries.length,
+            clinicId: clinicId,
+            db:       db,
+          ),
         );
       },
     );
   }
 }
 
-// ─── Queue Card ───────────────────────────────────────────────────────────────
+// ─── Queue card ───────────────────────────────────────────────────────────────
 
 class _QueueCard extends StatelessWidget {
-  final QueueEntry entry;
-  final int        position;
-  final String     clinicId;
+  final QueueEntry      entry;
+  final int             position;
+  final int             total;
+  final String          clinicId;
   final FirestoreService db;
 
   const _QueueCard({
     required this.entry,
     required this.position,
+    required this.total,
     required this.clinicId,
     required this.db,
   });
 
   @override
   Widget build(BuildContext context) {
-    final statusInfo = _statusInfo(entry.status);
+    final statusInfo  = _statusInfo(entry.status);
+    // ✅ Use static helper — plain int, no function reference
+    final waitMinutes = QueueEntry.waitMinutesForPosition(position);
+    final waitLabel   = position == 1 ? "Next up!" : "~$waitMinutes min";
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -92,23 +92,21 @@ class _QueueCard extends StatelessWidget {
         color:        Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: (statusInfo['border'] as Color).withOpacity(0.4),
-        ),
+            color: (statusInfo['border'] as Color).withOpacity(0.4)),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8)
+              color: Colors.black.withOpacity(0.04), blurRadius: 8)
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Top row ──
+          // ── Header row ──
           Row(
             children: [
-              // Queue number
+              // Position badge
               Container(
-                width: 40, height: 40,
+                width: 44, height: 44,
                 decoration: BoxDecoration(
                   color:        _priorityColor(entry.priority).withOpacity(0.12),
                   borderRadius: BorderRadius.circular(10),
@@ -117,13 +115,13 @@ class _QueueCard extends StatelessWidget {
                   child: Text('#$position',
                       style: GoogleFonts.poppins(
                           fontWeight: FontWeight.w700,
-                          color: _priorityColor(entry.priority),
-                          fontSize: 14)),
+                          color:      _priorityColor(entry.priority),
+                          fontSize:   14)),
                 ),
               ),
               const SizedBox(width: 12),
 
-              // Name + status
+              // Name + status chips
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,27 +131,21 @@ class _QueueCard extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                             fontSize:   15,
                             color:      const Color(0xFF0D1B2A))),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color:        statusInfo['bg'] as Color,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(statusInfo['label'] as String,
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: statusInfo['text'] as Color)),
+                        _Chip(
+                          label:  statusInfo['label'] as String,
+                          bg:     statusInfo['bg']   as Color,
+                          color:  statusInfo['text'] as Color,
                         ),
                         const SizedBox(width: 6),
-                        Text('~${entry.estimatedWaitMinutes} min',
-                            style: const TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF667085))),
+                        // ✅ waitLabel is a plain string — no function shown
+                        _Chip(
+                          label: waitLabel,
+                          bg:    const Color(0xFFF2F4F7),
+                          color: const Color(0xFF667085),
+                        ),
                       ],
                     ),
                   ],
@@ -164,8 +156,7 @@ class _QueueCard extends StatelessWidget {
               Container(
                 width: 10, height: 10,
                 decoration: BoxDecoration(
-                  color: _priorityColor(entry.priority),
-                  shape: BoxShape.circle,
+                  color: _priorityColor(entry.priority), shape: BoxShape.circle,
                 ),
               ),
             ],
@@ -177,8 +168,7 @@ class _QueueCard extends StatelessWidget {
           if (entry.symptoms.isNotEmpty)
             Wrap(
               spacing: 6, runSpacing: 4,
-              children: entry.symptoms
-                  .map((s) => Container(
+              children: entry.symptoms.map((s) => Container(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -187,16 +177,18 @@ class _QueueCard extends StatelessWidget {
                 ),
                 child: Text(s,
                     style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF344054))),
-              ))
-                  .toList(),
+                        fontSize: 11, color: Color(0xFF344054))),
+              )).toList(),
             ),
 
           const SizedBox(height: 12),
 
-          // ── Action buttons ──
-          Row(
+          // ── Action buttons — Wrap prevents overflow ──────────────────
+          // OLD: Row(...) caused RIGHT OVERFLOWED BY 210 PIXELS
+          // NEW: Wrap(...) — buttons flow to next line if needed
+          Wrap(
+            spacing:    8,
+            runSpacing: 8,
             children: [
               if (entry.status == QueueStatus.waiting)
                 _ActionBtn(
@@ -222,12 +214,17 @@ class _QueueCard extends StatelessWidget {
                   onTap: () => db.updateQueueStatus(
                       clinicId, entry.id, QueueStatus.done),
                 ),
-              const SizedBox(width: 8),
               _ActionBtn(
                 label: 'Remove',
                 icon:  Icons.remove_circle_outline_rounded,
                 color: Colors.red.shade400,
                 onTap: () => _confirmRemove(context),
+              ),
+              _ActionBtn(
+                label: 'Urgent',
+                icon:  Icons.priority_high_rounded,
+                color: Colors.orange,
+                onTap: () => db.updateQueuePriority(clinicId, entry.id, 10),
               ),
             ],
           ),
@@ -240,14 +237,11 @@ class _QueueCard extends StatelessWidget {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Remove from Queue'),
-        content: Text(
-            'Remove ${entry.patientName} from the queue?'),
+        title:   const Text('Remove from Queue'),
+        content: Text('Remove ${entry.patientName} from the queue?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
           TextButton(
             onPressed: () {
               db.removeQueueEntry(clinicId, entry.id);
@@ -270,72 +264,69 @@ class _QueueCard extends StatelessWidget {
   Map<String, dynamic> _statusInfo(QueueStatus s) {
     switch (s) {
       case QueueStatus.called:
-        return {
-          'label':  'Called',
-          'bg':     const Color(0xFFE8F5E9),
-          'text':   const Color(0xFF1B5E20),
-          'border': Colors.green,
-        };
+        return {'label': 'Called',      'bg': const Color(0xFFE8F5E9),
+          'text': const Color(0xFF1B5E20), 'border': Colors.green};
       case QueueStatus.inProgress:
-        return {
-          'label':  'In Progress',
-          'bg':     const Color(0xFFE3F2FD),
-          'text':   const Color(0xFF0D47A1),
-          'border': Colors.blue,
-        };
+        return {'label': 'In Progress', 'bg': const Color(0xFFE3F2FD),
+          'text': const Color(0xFF0D47A1), 'border': Colors.blue};
       case QueueStatus.done:
-        return {
-          'label':  'Done',
-          'bg':     const Color(0xFFF2F4F7),
-          'text':   const Color(0xFF667085),
-          'border': Colors.grey,
-        };
+        return {'label': 'Done',        'bg': const Color(0xFFF2F4F7),
+          'text': const Color(0xFF667085), 'border': Colors.grey};
       default:
-        return {
-          'label':  'Waiting',
-          'bg':     const Color(0xFFFFF8E1),
-          'text':   const Color(0xFF7A5900),
-          'border': Colors.orange,
-        };
+        return {'label': 'Waiting',     'bg': const Color(0xFFFFF8E1),
+          'text': const Color(0xFF7A5900), 'border': Colors.orange};
     }
   }
 }
 
-class _ActionBtn extends StatelessWidget {
-  final String   label;
-  final IconData icon;
-  final Color    color;
-  final VoidCallback onTap;
+// ─── Small widgets ────────────────────────────────────────────────────────────
 
-  const _ActionBtn({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
+class _Chip extends StatelessWidget {
+  final String label;
+  final Color  bg;
+  final Color  color;
+  const _Chip({required this.label, required this.bg, required this.color});
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color:        color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border:       Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 4),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w600, color: color)),
-          ],
-        ),
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration:
+    BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
+    child: Text(label,
+        style: TextStyle(
+            fontSize: 11, fontWeight: FontWeight.w600, color: color)),
+  );
+}
+
+class _ActionBtn extends StatelessWidget {
+  final String    label;
+  final IconData  icon;
+  final Color     color;
+  final VoidCallback onTap;
+  const _ActionBtn(
+      {required this.label, required this.icon,
+        required this.color,  required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color:        color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border:       Border.all(color: color.withOpacity(0.35)),
       ),
-    );
-  }
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+        ],
+      ),
+    ),
+  );
 }

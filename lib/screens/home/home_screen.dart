@@ -28,35 +28,30 @@ class _HomeScreenState extends State<HomeScreen> {
       _initialized = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        // Pass patientId so QueueProvider can restore any existing queue entry
-        context.read<QueueProvider>().startListening(patient.id);
+        final queueProv = context.read<QueueProvider>();
+        final chatProv  = context.read<ChatProvider>();
+
+        queueProv.startListening(patient.id);
         context.read<MedicationProvider>().startListening(patient.id);
-        context.read<ChatProvider>().initSession(patient);
+
+        // Give ChatProvider access to QueueProvider so it can auto-book queue
+        chatProv.setQueueProvider(queueProv);
+        chatProv.initSession(patient);
       });
     }
   }
 
   static const _navItems = [
     NavigationDestination(
-      icon:         Icon(Icons.home_outlined),
-      selectedIcon: Icon(Icons.home_rounded),
-      label:        'Home',
-    ),
+        icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Home'),
     NavigationDestination(
-      icon:         Icon(Icons.queue_outlined),
-      selectedIcon: Icon(Icons.queue_rounded),
-      label:        'Queue',
-    ),
+        icon: Icon(Icons.queue_outlined), selectedIcon: Icon(Icons.queue_rounded), label: 'Queue'),
     NavigationDestination(
-      icon:         Icon(Icons.chat_bubble_outline_rounded),
-      selectedIcon: Icon(Icons.chat_bubble_rounded),
-      label:        'AI Care',
-    ),
+        icon: Icon(Icons.chat_bubble_outline_rounded),
+        selectedIcon: Icon(Icons.chat_bubble_rounded), label: 'AI Care'),
     NavigationDestination(
-      icon:         Icon(Icons.medication_outlined),
-      selectedIcon: Icon(Icons.medication_rounded),
-      label:        'Meds',
-    ),
+        icon: Icon(Icons.medication_outlined),
+        selectedIcon: Icon(Icons.medication_rounded), label: 'Meds'),
   ];
 
   @override
@@ -78,7 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
         indicatorColor:        const Color(0xFF00C896).withOpacity(0.15),
         shadowColor:           Colors.black12,
         elevation:             8,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        labelBehavior:         NavigationDestinationLabelBehavior.alwaysShow,
       ),
     );
   }

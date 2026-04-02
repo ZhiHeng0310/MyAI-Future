@@ -14,32 +14,27 @@ class QueueScreen extends StatefulWidget {
 }
 
 class _QueueScreenState extends State<QueueScreen> {
-  final List<String> _selectedSymptoms = [];
+  final List<String> _selected = [];
 
-  static const _commonSymptoms = [
+  static const _symptoms = [
     'Fever', 'Headache', 'Cough', 'Sore throat',
     'Body ache', 'Fatigue', 'Nausea', 'Dizziness',
     'Chest pain', 'Shortness of breath',
   ];
 
-  Future<void> _joinQueue() async {
-    if (_selectedSymptoms.isEmpty) {
+  Future<void> _join() async {
+    if (_selected.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Please select at least one symptom.')),
-      );
+          const SnackBar(content: Text('Please select at least one symptom.')));
       return;
     }
     final auth  = context.read<AuthProvider>();
     final queue = context.read<QueueProvider>();
-
-    // Guard against duplicate join (belt-and-suspenders on top of provider)
     if (queue.isAlreadyInQueue) return;
-
     await queue.joinQueue(
       patientId:   auth.patient?.id   ?? 'guest',
       patientName: auth.patient?.name ?? 'Guest',
-      symptoms:    List.from(_selectedSymptoms),
+      symptoms:    List.from(_selected),
     );
   }
 
@@ -52,38 +47,36 @@ class _QueueScreenState extends State<QueueScreen> {
       appBar: AppBar(title: const Text('Smart Queue')),
       body: inQueue
           ? _InQueueView(queue: queue)
-          : _JoinQueueView(
-        selectedSymptoms: _selectedSymptoms,
-        onToggleSymptom:  (s) => setState(() => _selectedSymptoms
-            .contains(s)
-            ? _selectedSymptoms.remove(s)
-            : _selectedSymptoms.add(s)),
-        onJoin:  _joinQueue,
+          : _JoinView(
+        selected:       _selected,
+        onToggle:       (s) => setState(() =>
+        _selected.contains(s)
+            ? _selected.remove(s)
+            : _selected.add(s)),
+        onJoin:  _join,
         loading: queue.loading,
       ),
     );
   }
 }
 
-// ─── Join Queue View ──────────────────────────────────────────────────────────
+// ─── Join view ────────────────────────────────────────────────────────────────
 
-class _JoinQueueView extends StatelessWidget {
-  final List<String> selectedSymptoms;
-  final Function(String) onToggleSymptom;
-  final VoidCallback onJoin;
-  final bool loading;
+class _JoinView extends StatelessWidget {
+  final List<String>   selected;
+  final Function(String) onToggle;
+  final VoidCallback   onJoin;
+  final bool           loading;
 
-  static const _commonSymptoms = [
+  static const _symptoms = [
     'Fever', 'Headache', 'Cough', 'Sore throat',
     'Body ache', 'Fatigue', 'Nausea', 'Dizziness',
     'Chest pain', 'Shortness of breath',
   ];
 
-  const _JoinQueueView({
-    required this.selectedSymptoms,
-    required this.onToggleSymptom,
-    required this.onJoin,
-    required this.loading,
+  const _JoinView({
+    required this.selected, required this.onToggle,
+    required this.onJoin,   required this.loading,
   });
 
   @override
@@ -93,7 +86,6 @@ class _JoinQueueView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Hero banner
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -106,8 +98,7 @@ class _JoinQueueView extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Icon(Icons.queue_rounded,
-                    color: Colors.white, size: 36),
+                const Icon(Icons.queue_rounded, color: Colors.white, size: 36),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -115,10 +106,8 @@ class _JoinQueueView extends StatelessWidget {
                     children: [
                       Text('Join Queue Remotely',
                           style: GoogleFonts.poppins(
-                              color:      Colors.white,
-                              fontSize:   18,
+                              color: Colors.white, fontSize: 18,
                               fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 4),
                       Text('Skip the waiting room.',
                           style: GoogleFonts.dmSans(
                               color: Colors.white70, fontSize: 13)),
@@ -140,66 +129,74 @@ class _JoinQueueView extends StatelessWidget {
 
           Wrap(
             spacing: 8, runSpacing: 8,
-            children: _commonSymptoms.asMap().entries.map((e) {
-              final selected = selectedSymptoms.contains(e.value);
+            children: _symptoms.asMap().entries.map((e) {
+              final sel = selected.contains(e.value);
               return GestureDetector(
-                onTap: () => onToggleSymptom(e.value),
+                onTap: () => onToggle(e.value),
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
+                  duration: const Duration(milliseconds: 180),
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: selected
+                    color: sel
                         ? const Color(0xFF6C63FF)
                         : Colors.white,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: selected
+                      color: sel
                           ? const Color(0xFF6C63FF)
                           : const Color(0xFFE4E7EC),
                     ),
-                    boxShadow: selected
-                        ? [
-                      BoxShadow(
-                          color: const Color(0xFF6C63FF)
-                              .withOpacity(0.3),
-                          blurRadius: 8)
-                    ]
+                    boxShadow: sel
+                        ? [BoxShadow(
+                        color: const Color(0xFF6C63FF).withOpacity(0.3),
+                        blurRadius: 8)]
                         : [],
                   ),
-                  child: Text(
-                    e.value,
-                    style: TextStyle(
-                      color:      selected
-                          ? Colors.white
-                          : const Color(0xFF344054),
-                      fontSize:   14,
-                      fontWeight: selected
-                          ? FontWeight.w600
-                          : FontWeight.w400,
-                    ),
-                  ),
+                  child: Text(e.value,
+                      style: TextStyle(
+                          color: sel ? Colors.white : const Color(0xFF344054),
+                          fontSize: 14,
+                          fontWeight: sel
+                              ? FontWeight.w600
+                              : FontWeight.w400)),
                 ),
-              )
-                  .animate(
-                  delay: Duration(
-                      milliseconds: 150 + e.key * 30))
-                  .fadeIn()
-                  .scale(
-                  begin: const Offset(0.9, 0.9));
+              ).animate(delay: Duration(milliseconds: 150 + e.key * 30))
+                  .fadeIn().scale(begin: const Offset(0.9, 0.9));
             }).toList(),
           ),
 
-          const SizedBox(height: 32),
-
-          if (selectedSymptoms.isNotEmpty) ...[
-            _UrgencyNote(symptoms: selectedSymptoms),
-            const SizedBox(height: 20),
+          if (selected.contains('Chest pain') ||
+              selected.contains('Shortness of breath')) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color:        Colors.red.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border:       Border.all(color: Colors.red.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      color: Colors.red.shade600),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Urgent symptoms detected — you will be prioritised.',
+                      style: TextStyle(
+                          color: Colors.red.shade700, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
 
+          const SizedBox(height: 32),
+
           SizedBox(
-            width:  double.infinity,
-            height: 52,
+            width: double.infinity, height: 52,
             child: ElevatedButton(
               onPressed: loading ? null : onJoin,
               style: ElevatedButton.styleFrom(
@@ -211,14 +208,12 @@ class _JoinQueueView extends StatelessWidget {
               ),
               child: loading
                   ? const SizedBox(
-                  width:  20,
-                  height: 20,
-                  child:  CircularProgressIndicator(
+                  width: 20, height: 20,
+                  child: CircularProgressIndicator(
                       strokeWidth: 2, color: Colors.white))
                   : Text('Join Queue',
                   style: GoogleFonts.dmSans(
-                      fontSize:   16,
-                      fontWeight: FontWeight.w600)),
+                      fontSize: 16, fontWeight: FontWeight.w600)),
             ),
           ).animate(delay: 200.ms).fadeIn().slideY(begin: 0.2),
         ],
@@ -227,42 +222,7 @@ class _JoinQueueView extends StatelessWidget {
   }
 }
 
-class _UrgencyNote extends StatelessWidget {
-  final List<String> symptoms;
-  const _UrgencyNote({required this.symptoms});
-
-  @override
-  Widget build(BuildContext context) {
-    final isUrgent = symptoms.any(
-            (s) => s == 'Chest pain' || s == 'Shortness of breath');
-    if (!isUrgent) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color:        Colors.red.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: Colors.red.shade200),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.warning_amber_rounded,
-              color: Colors.red.shade600),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'You have reported urgent symptoms. '
-                  'You will be prioritised in the queue.',
-              style:
-              TextStyle(color: Colors.red.shade700, fontSize: 13),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── In Queue View ────────────────────────────────────────────────────────────
+// ─── In-queue view ────────────────────────────────────────────────────────────
 
 class _InQueueView extends StatelessWidget {
   final QueueProvider queue;
@@ -270,19 +230,11 @@ class _InQueueView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final entry        = queue.myEntry!;
-    final pos          = queue.myPosition;
-    final waitMinutes  = queue.myEstimatedWait;
-
-    // Format wait time display
-    String waitLabel;
-    if (pos <= 1) {
-      waitLabel = "You're next!";
-    } else if (waitMinutes == 0) {
-      waitLabel = 'Calculating…';
-    } else {
-      waitLabel = '~$waitMinutes min estimated wait';
-    }
+    final entry  = queue.myEntry!;
+    final pos    = queue.myPosition;
+    // ✅ Use provider's int getter — never shows function reference
+    final wait   = queue.myEstimatedWait;
+    final waitLabel = pos <= 1 ? "You're next!" : '~$wait min estimated wait';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -290,7 +242,7 @@ class _InQueueView extends StatelessWidget {
         children: [
           // Position card
           Container(
-            width:   double.infinity,
+            width: double.infinity,
             padding: const EdgeInsets.all(28),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
@@ -306,19 +258,14 @@ class _InQueueView extends StatelessWidget {
                     style: GoogleFonts.dmSans(
                         color: Colors.white54, fontSize: 13)),
                 const SizedBox(height: 8),
-                Text(
-                  pos > 0 ? '#$pos' : '—',
-                  style: GoogleFonts.poppins(
-                      color:      Colors.white,
-                      fontSize:   64,
-                      fontWeight: FontWeight.w700),
-                )
+                Text(pos > 0 ? '#$pos' : '—',
+                    style: GoogleFonts.poppins(
+                        color: Colors.white, fontSize: 64,
+                        fontWeight: FontWeight.w700))
                     .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .shimmer(
-                    duration: 2.seconds,
+                    .shimmer(duration: 2.seconds,
                     color: const Color(0xFF00C896)),
                 const SizedBox(height: 8),
-                // Dynamic wait time badge
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 6),
@@ -326,44 +273,38 @@ class _InQueueView extends StatelessWidget {
                     color: const Color(0xFF00C896).withOpacity(0.15),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Text(
-                    waitLabel,
-                    style: GoogleFonts.dmSans(
-                        color:      const Color(0xFF00C896),
-                        fontWeight: FontWeight.w600),
-                  ),
+                  child: Text(waitLabel,
+                      style: GoogleFonts.dmSans(
+                          color:      const Color(0xFF00C896),
+                          fontWeight: FontWeight.w600)),
                 ),
-                const SizedBox(height: 6),
-                // People ahead
-                if (pos > 1)
+                if (pos > 1) ...[
+                  const SizedBox(height: 6),
                   Text(
                     '${pos - 1} ${pos - 1 == 1 ? 'person' : 'people'} ahead of you',
                     style: GoogleFonts.dmSans(
                         color: Colors.white38, fontSize: 12),
                   ),
+                ],
               ],
             ),
-          ).animate().scale(
-              duration: 500.ms, curve: Curves.elasticOut),
+          ).animate().scale(duration: 500.ms, curve: Curves.elasticOut),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
           _StatusCard(status: entry.status),
 
           const SizedBox(height: 16),
 
-          // Symptoms chip list
+          // Symptoms
           Container(
-            width:   double.infinity,
+            width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color:        Colors.white,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                    color:     Colors.black.withOpacity(0.04),
-                    blurRadius: 8)
-              ],
+              boxShadow: [BoxShadow(
+                  color: Colors.black.withOpacity(0.04), blurRadius: 8)],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -376,10 +317,10 @@ class _InQueueView extends StatelessWidget {
                   spacing: 6, runSpacing: 6,
                   children: entry.symptoms
                       .map((s) => Chip(
-                    label:           Text(s,
+                    label: Text(s,
                         style: const TextStyle(fontSize: 12)),
                     backgroundColor: const Color(0xFFF2F4F7),
-                    side:            BorderSide.none,
+                    side: BorderSide.none,
                   ))
                       .toList(),
                 ),
@@ -389,16 +330,24 @@ class _InQueueView extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          // Live queue list preview (first 5)
-          Text('Queue Status',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(fontSize: 16)),
+          // Queue preview list
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Queue Status',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontSize: 16)),
+          ),
           const SizedBox(height: 10),
 
           ...queue.entries.take(5).toList().asMap().entries.map((e) {
-            final isMe = queue.myEntry?.id == e.value.id;
+            final isMe  = queue.myEntry?.id == e.value.id;
+            final ePos  = e.key + 1;
+            // ✅ static helper returns int directly
+            final eWait = QueueEntry.waitMinutesForPosition(ePos);
+            final eWaitLabel = ePos == 1 ? "Next!" : "~$eWait min";
+
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.symmetric(
@@ -416,7 +365,7 @@ class _InQueueView extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  Text('#${e.key + 1}',
+                  Text('#$ePos',
                       style: TextStyle(
                           fontWeight: FontWeight.w700,
                           color: isMe
@@ -425,31 +374,31 @@ class _InQueueView extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      isMe
-                          ? 'You'
-                          : e.value.patientName.split(' ').first,
+                      isMe ? 'You' : e.value.patientName.split(' ').first,
                       style: TextStyle(
                           fontWeight: isMe
-                              ? FontWeight.w600
-                              : FontWeight.w400),
+                              ? FontWeight.w600 : FontWeight.w400),
                     ),
                   ),
-                  // Show wait for each entry
-                  Text(
-                    '~${e.key * 10} min',
-                    style: const TextStyle(
-                        fontSize: 11, color: Color(0xFF667085)),
-                  ),
+                  Text(eWaitLabel,
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFF667085))),
                   const SizedBox(width: 8),
-                  _PriorityDot(priority: e.value.priority),
+                  Container(
+                    width: 8, height: 8,
+                    decoration: BoxDecoration(
+                      color: e.value.priority >= 9
+                          ? Colors.red
+                          : e.value.priority >= 7
+                          ? Colors.orange
+                          : const Color(0xFF00C896),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                 ],
               ),
-            )
-                .animate(
-                delay: Duration(
-                    milliseconds: 300 + e.key * 50))
-                .fadeIn()
-                .slideX(begin: 0.1);
+            ).animate(delay: Duration(milliseconds: 300 + e.key * 50))
+                .fadeIn().slideX(begin: 0.1);
           }),
         ],
       ),
@@ -463,13 +412,12 @@ class _StatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final info = _infoFor(status);
+    final info = _info(status);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color:        info['color'] as Color,
-        borderRadius: BorderRadius.circular(14),
-      ),
+          color: info['color'] as Color,
+          borderRadius: BorderRadius.circular(14)),
       child: Row(
         children: [
           Icon(info['icon'] as IconData,
@@ -485,55 +433,28 @@ class _StatusCard extends StatelessWidget {
     );
   }
 
-  Map<String, dynamic> _infoFor(QueueStatus s) {
+  Map<String, dynamic> _info(QueueStatus s) {
     switch (s) {
-      case QueueStatus.waiting:
-        return {
-          'label':     'Waiting in queue…',
-          'icon':      Icons.hourglass_top_rounded,
-          'color':     const Color(0xFFFFF8E1),
-          'textColor': const Color(0xFF7A5900),
-        };
       case QueueStatus.called:
-        return {
-          'label':     'Your turn! Please proceed.',
-          'icon':      Icons.notifications_active_rounded,
-          'color':     const Color(0xFFE8F5E9),
-          'textColor': const Color(0xFF1B5E20),
-        };
+        return {'label': 'Your turn! Please proceed.',
+          'icon': Icons.notifications_active_rounded,
+          'color': const Color(0xFFE8F5E9),
+          'textColor': const Color(0xFF1B5E20)};
       case QueueStatus.inProgress:
-        return {
-          'label':     'In consultation',
-          'icon':      Icons.medical_services_rounded,
-          'color':     const Color(0xFFE3F2FD),
-          'textColor': const Color(0xFF0D47A1),
-        };
+        return {'label': 'In consultation',
+          'icon': Icons.medical_services_rounded,
+          'color': const Color(0xFFE3F2FD),
+          'textColor': const Color(0xFF0D47A1)};
+      case QueueStatus.done:
+        return {'label': 'Consultation complete',
+          'icon': Icons.check_circle_rounded,
+          'color': const Color(0xFFE8F5E9),
+          'textColor': const Color(0xFF1B5E20)};
       default:
-        return {
-          'label':     'Consultation complete',
-          'icon':      Icons.check_circle_rounded,
-          'color':     const Color(0xFFE8F5E9),
-          'textColor': const Color(0xFF1B5E20),
-        };
+        return {'label': 'Waiting in queue…',
+          'icon': Icons.hourglass_top_rounded,
+          'color': const Color(0xFFFFF8E1),
+          'textColor': const Color(0xFF7A5900)};
     }
-  }
-}
-
-class _PriorityDot extends StatelessWidget {
-  final int priority;
-  const _PriorityDot({required this.priority});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = priority >= 9
-        ? Colors.red
-        : priority >= 7
-        ? Colors.orange
-        : const Color(0xFF00C896);
-    return Container(
-      width: 8, height: 8,
-      decoration:
-      BoxDecoration(color: color, shape: BoxShape.circle),
-    );
   }
 }

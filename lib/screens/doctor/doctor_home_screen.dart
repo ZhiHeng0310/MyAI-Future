@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/doctor_chat_provider.dart';
 import 'doctor_queue_screen.dart';
+import 'doctor_alerts_screen.dart';
+import 'doctor_chat_screen.dart';
 import 'doctor_patients_screen.dart';
 
 class DoctorHomeScreen extends StatefulWidget {
@@ -13,7 +16,21 @@ class DoctorHomeScreen extends StatefulWidget {
 }
 
 class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
-  int _index = 0;
+  int  _index       = 0;
+  bool _chatInited  = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final doctor = Provider.of<AuthProvider>(context).doctor;
+    if (doctor != null && !_chatInited) {
+      _chatInited = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        context.read<DoctorChatProvider>().initSession(doctor);
+      });
+    }
+  }
 
   static const _navItems = [
     NavigationDestination(
@@ -26,16 +43,28 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
       selectedIcon: Icon(Icons.people_rounded),
       label:        'Patients',
     ),
+    NavigationDestination(
+      icon:         Icon(Icons.notifications_outlined),
+      selectedIcon: Icon(Icons.notifications_rounded),
+      label:        'Alerts',
+    ),
+    NavigationDestination(
+      icon:         Icon(Icons.smart_toy_outlined),
+      selectedIcon: Icon(Icons.smart_toy_rounded),
+      label:        'AI',
+    ),
   ];
 
   @override
   Widget build(BuildContext context) {
     final doctor = context.watch<AuthProvider>().doctor;
-    final name   = doctor?.name.split(' ').first ?? 'Doctor';
+    final name   = doctor?.name.split(' ').last ?? 'Doctor';
 
     final screens = [
       DoctorQueueScreen(clinicId: doctor?.clinicId ?? 'clinic_main'),
       const DoctorPatientsScreen(),
+      const DoctorAlertsScreen(),
+      const DoctorChatScreen(),
     ];
 
     return Scaffold(
@@ -71,22 +100,19 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
           IconButton(
             icon:    const Icon(Icons.logout_rounded),
             tooltip: 'Sign out',
-            onPressed: () async {
-              await context.read<AuthProvider>().signOut();
-              // AuthWrapper navigates back to LoginScreen automatically
-            },
+            onPressed: () => context.read<AuthProvider>().signOut(),
           ),
         ],
       ),
       body: IndexedStack(index: _index, children: screens),
       bottomNavigationBar: NavigationBar(
-        selectedIndex:          _index,
-        onDestinationSelected:  (i) => setState(() => _index = i),
-        destinations:           _navItems,
-        backgroundColor:        Colors.white,
-        indicatorColor:         const Color(0xFF6C63FF).withOpacity(0.15),
-        elevation:              8,
-        shadowColor:            Colors.black12,
+        selectedIndex:         _index,
+        onDestinationSelected: (i) => setState(() => _index = i),
+        destinations:          _navItems,
+        backgroundColor:       Colors.white,
+        indicatorColor:        const Color(0xFF6C63FF).withOpacity(0.15),
+        elevation:             8,
+        shadowColor:           Colors.black12,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       ),
     );
