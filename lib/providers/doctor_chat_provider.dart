@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../models/doctor_model.dart';
 import '../models/patient_model.dart';
@@ -9,11 +10,13 @@ class DoctorChatMessage {
   final String text;
   final bool   isDoctor;
   final String? action;
+  final bool    hasImage;
   final DateTime timestamp;
   DoctorChatMessage({
     required this.text,
     required this.isDoctor,
     this.action,
+    this.hasImage = false,
     DateTime? timestamp,
   }) : timestamp = timestamp ?? DateTime.now();
 }
@@ -37,7 +40,6 @@ class DoctorChatProvider extends ChangeNotifier {
     if (_sessionReady) return;
     _doctor = doctor;
 
-    // Load assigned patients for context
     _patients = await _db.getPatientsForDoctor(doctor.id);
     final summaries = _patients
         .map((p) => '${p.name} (Dx: ${p.diagnosis ?? "N/A"})')
@@ -57,6 +59,7 @@ class DoctorChatProvider extends ChangeNotifier {
       text: 'Hello Dr. ${doctor.name.split(' ').last}! 👋 I\'m your CareLoop AI assistant. '
           'I can help you check on patients, send them messages, or request appointments.\n\n'
           'You currently have ${_patients.length} assigned patient(s). '
+          'You can also send me medical images or reports for clinical analysis. '
           'How can I help you today?',
       isDoctor: false,
     ));
@@ -72,7 +75,7 @@ class DoctorChatProvider extends ChangeNotifier {
     if (doctor != null) await initSession(doctor);
   }
 
-  // ── Send ──────────────────────────────────────────────────────────────────
+  // ── Send text message ──────────────────────────────────────────────────────
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
     _messages.add(DoctorChatMessage(text: text, isDoctor: true));
@@ -80,13 +83,38 @@ class DoctorChatProvider extends ChangeNotifier {
     notifyListeners();
 
     final response = await _gemini.sendMessage(text);
+    await _processResponse(response, text);
+  }
 
+  // ── Send message with image ───────────────────────────────────────────────
+  Future<void> sendMessageWithImage(
+      String text, Uint8List imageBytes, String mimeType) async {
+    final displayText = text.isEmpty ? '📷 [Medical image sent for analysis]' : text;
+    _messages.add(DoctorChatMessage(
+      text: displayText,
+      isDoctor: true,
+      hasImage: true,
+    ));
+    _thinking = true;
+    notifyListeners();
+
+    final promptText = text.isEmpty
+        ? 'Please analyze this medical image/report and provide clinical observations.'
+        : text;
+
+    final response = await _gemini.sendMessageWithImage(
+        promptText, imageBytes, mimeType);
+    await _processResponse(response, promptText);
+  }
+
+  // ── Process response ──────────────────────────────────────────────────────
+  Future<void> _processResponse(GeminiResponse response, String query) async {
     String displayMsg = response.message;
 
     // ── Agentic: check patient status ─────────────────────────────────────
     if (response.actions.contains('check_patient_status')) {
       displayMsg = await _handleCheckPatient(
-          response.patientId, text);
+          response.patientId, query);
     }
 
     // ── Agentic: send appointment request to patient ───────────────────────
@@ -125,7 +153,6 @@ class DoctorChatProvider extends ChangeNotifier {
       String? patientIdHint, String query) async {
     if (_doctor == null) return 'No doctor context available.';
 
-    // Find the patient mentioned (by name partial match or ID)
     PatientModel? target;
     if (patientIdHint != null && patientIdHint.isNotEmpty) {
       try {
@@ -135,7 +162,6 @@ class DoctorChatProvider extends ChangeNotifier {
       } catch (_) {}
     }
     if (target == null && _patients.isNotEmpty) {
-      // Try to extract name from query
       for (final p in _patients) {
         final first = p.name.split(' ').first.toLowerCase();
         if (query.toLowerCase().contains(first)) {
@@ -146,12 +172,13 @@ class DoctorChatProvider extends ChangeNotifier {
     }
 
     if (target == null) {
-      final names = _patients.map((p) => p.name).join(', ');
+      final names = _patients.isEmpty
+          ? 'No assigned patients yet'
+          : _patients.map((p) => p.name).join(', ');
       return 'I couldn\'t identify which patient you\'re asking about. '
           'Your assigned patients are: $names. Could you specify?';
     }
 
-    // Build status summary
     final diagnosis    = target.diagnosis ?? 'not recorded';
     final daysStr      = target.daysSinceVisit > 0
         ? '${target.daysSinceVisit} days since last visit'
@@ -183,7 +210,6 @@ class DoctorChatProvider extends ChangeNotifier {
     target ??= _patients.isNotEmpty ? _patients.first : null;
     if (target == null) return;
 
-    // Write to patient inbox
     await _db.createPatientInboxMessage(
       patientId: target.id,
       message:   '📩 Message from Dr. ${_doctor!.name}: $message',
@@ -191,10 +217,13 @@ class DoctorChatProvider extends ChangeNotifier {
       doctorId:  _doctor!.id,
     );
 
-    // Local notification to patient device
-    await NotificationService.showQueueStatusNotification(
-      title: '📩 Message from Dr. ${_doctor!.name}',
-      body:  message,
+    // Send push notification to patient
+    await NotificationService.sendPushToUser(
+      userId:         target.id,
+      userCollection: 'patients',
+      title:          '📩 Dr. ${_doctor!.name}',
+      body:           message,
+      channel:        'careloop_queue',
     );
   }
 

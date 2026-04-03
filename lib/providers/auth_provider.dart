@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/patient_model.dart';
 import '../models/doctor_model.dart';
 import '../services/firestore_service.dart';
+import '../services/notification_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final _auth = FirebaseAuth.instance;
@@ -12,10 +13,9 @@ class AuthProvider extends ChangeNotifier {
   PatientModel? _patient;
   DoctorModel?  _doctor;
 
-  // 'patient' | 'doctor' | 'unknown'
   String _role           = 'unknown';
-  bool   _profileLoading = false;  // true while we're fetching Firestore profile
-  bool   _loading        = false;  // true during signIn / register button press
+  bool   _profileLoading = false;
+  bool   _loading        = false;
   String? _error;
 
   User?         get user           => _user;
@@ -28,16 +28,20 @@ class AuthProvider extends ChangeNotifier {
   String?       get error          => _error;
 
   AuthProvider() {
-    // Re-runs every time Firebase auth state changes (sign in, sign out, app start)
     _auth.authStateChanges().listen((u) async {
       _user = u;
       if (u != null) {
         _profileLoading = true;
         notifyListeners();
         await _loadProfile(u.uid);
+
+        // ── Save FCM token for push notifications ──────────────────────────
+        await NotificationService.init();
+        final collection = _role == 'doctor' ? 'doctors' : 'patients';
+        await NotificationService.saveFcmToken(u.uid, collection);
+
         _profileLoading = false;
       } else {
-        // Signed out — clear everything
         _patient        = null;
         _doctor         = null;
         _role           = 'unknown';
@@ -49,14 +53,12 @@ class AuthProvider extends ChangeNotifier {
 
   // ─── Profile loader ───────────────────────────────────────────────────────
   Future<void> _loadProfile(String uid) async {
-    // Check doctors collection first
     final doc = await _db.getDoctor(uid);
     if (doc != null) {
       _doctor = doc;
       _role   = 'doctor';
       return;
     }
-    // Fall back to patients
     final patient = await _db.getPatient(uid);
     if (patient != null) {
       _patient = patient;
@@ -64,7 +66,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ─── Sign in (works for both patients and doctors) ────────────────────────
+  // ─── Sign in ──────────────────────────────────────────────────────────────
   Future<bool> signIn(String email, String password) async {
     _loading = true;
     _error   = null;
@@ -110,8 +112,6 @@ class AuthProvider extends ChangeNotifier {
   }
 
   // ─── Register doctor ──────────────────────────────────────────────────────
-  /// [clinicCode] must match AppConfig.doctorRegistrationCode to prevent
-  /// random users from self-registering as doctors.
   Future<bool> registerDoctor({
     required String email,
     required String password,
@@ -154,7 +154,6 @@ class AuthProvider extends ChangeNotifier {
   // ─── Sign out ─────────────────────────────────────────────────────────────
   Future<void> signOut() async {
     await _auth.signOut();
-    // authStateChanges listener fires → clears patient/doctor/role
   }
 
   // ─── Error messages ───────────────────────────────────────────────────────

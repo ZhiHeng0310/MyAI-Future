@@ -1,10 +1,15 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/appointment_provider.dart';
+import '../../services/firestore_service.dart';
 import '../../widgets/risk_badge.dart';
+import '../appointment/appointment_booking_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -16,6 +21,7 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final _ctrl       = TextEditingController();
   final _scrollCtrl = ScrollController();
+  final _picker     = ImagePicker();
 
   void _send() {
     final text = _ctrl.text.trim();
@@ -35,11 +41,132 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// ── FIXED reload: calls resetSession which recreates GeminiService ────────
   Future<void> _reload() async {
     final patient = context.read<AuthProvider>().patient;
     await context.read<ChatProvider>().resetSession(patient);
     Future.delayed(const Duration(milliseconds: 200), _scrollToBottom);
+  }
+
+  // ── Pick and send image ───────────────────────────────────────────────────
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? file = await _picker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (file == null || !mounted) return;
+
+      final bytes = await file.readAsBytes();
+      final mimeType = file.mimeType ?? 'image/jpeg';
+      final text = _ctrl.text.trim();
+      _ctrl.clear();
+
+      if (!mounted) return;
+      context.read<ChatProvider>().sendMessageWithImage(
+        text.isEmpty
+            ? 'Please analyze this medication bill/receipt and explain it to me.'
+            : text,
+        bytes,
+        mimeType,
+      );
+      Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not pick image: $e')),
+        );
+      }
+    }
+  }
+
+  void _showImageOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Send Photo',
+                  style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w700, fontSize: 16)),
+              const SizedBox(height: 6),
+              Text(
+                'Send a photo of your medication bill or receipt for AI analysis',
+                style: GoogleFonts.dmSans(
+                    color: const Color(0xFF667085), fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ImageOptionBtn(
+                      icon: Icons.camera_alt_rounded,
+                      label: 'Camera',
+                      color: const Color(0xFF00C896),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _pickImage(ImageSource.camera);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _ImageOptionBtn(
+                      icon: Icons.photo_library_rounded,
+                      label: 'Gallery',
+                      color: const Color(0xFF6C63FF),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _pickImage(ImageSource.gallery);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Open booking screen ───────────────────────────────────────────────────
+  Future<void> _openBookingScreen(List<String> symptoms) async {
+    final auth = context.read<AuthProvider>();
+    final patient = auth.patient;
+    if (patient == null) return;
+
+    // Get first available doctor
+    final db = FirestoreService();
+    final doctors = await db.getAllDoctors();
+    if (doctors.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No doctors available. Please contact the clinic.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => AppointmentBookingScreen(
+        doctor:          doctors.first,
+        patient:         patient,
+        initialSymptoms: symptoms,
+      ),
+    ));
   }
 
   @override
@@ -85,7 +212,6 @@ class _ChatScreenState extends State<ChatScreen> {
           IconButton(
             icon:    const Icon(Icons.refresh_rounded),
             tooltip: 'New session',
-            // ✅ Fixed: was clearChat() which left session stuck
             onPressed: _reload,
           ),
         ],
@@ -113,18 +239,126 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (i == chat.messages.length) {
                   return const _TypingIndicator();
                 }
-                return _MessageBubble(msg: chat.messages[i])
-                    .animate()
-                    .fadeIn(duration: 250.ms)
-                    .slideY(begin: 0.15);
+                final msg = chat.messages[i];
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _MessageBubble(msg: msg)
+                        .animate()
+                        .fadeIn(duration: 250.ms)
+                        .slideY(begin: 0.15),
+                    // ── Booking CTA ──────────────────────────────────
+                    if (msg.showBookingPrompt && !msg.isUser)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 38, bottom: 8),
+                        child: _BookingCTA(
+                          onTap: () => _openBookingScreen(
+                            chat.messages
+                                .where((m) => !m.isUser)
+                                .lastOrNull
+                                ?.actions ?? [],
+                          ),
+                        ),
+                      ),
+                  ],
+                );
               },
             ),
           ),
 
           // ── Input bar ─────────────────────────────────────────────────────
           _InputBar(
-              ctrl: _ctrl, onSend: _send, thinking: chat.thinking),
+            ctrl:           _ctrl,
+            onSend:         _send,
+            thinking:       chat.thinking,
+            onImageTap:     _showImageOptions,
+          ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Booking CTA Button ───────────────────────────────────────────────────────
+
+class _BookingCTA extends StatelessWidget {
+  final VoidCallback onTap;
+  const _BookingCTA({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF6C63FF), Color(0xFF4B44CC)],
+          ),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF6C63FF).withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            )
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.calendar_month_rounded,
+                color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text('Book Appointment Now',
+                style: GoogleFonts.dmSans(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13)),
+            const SizedBox(width: 6),
+            const Icon(Icons.arrow_forward_rounded,
+                color: Colors.white70, size: 14),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(delay: 300.ms).slideX(begin: -0.1);
+  }
+}
+
+// ─── Image Option Button ──────────────────────────────────────────────────────
+
+class _ImageOptionBtn extends StatelessWidget {
+  final IconData  icon;
+  final String    label;
+  final Color     color;
+  final VoidCallback onTap;
+  const _ImageOptionBtn({
+    required this.icon, required this.label,
+    required this.color, required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color:        color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(14),
+          border:       Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 8),
+            Text(label,
+                style: TextStyle(
+                    color:      color,
+                    fontWeight: FontWeight.w600,
+                    fontSize:   13)),
+          ],
+        ),
       ),
     );
   }
@@ -219,15 +453,25 @@ class _MessageBubble extends StatelessWidget {
                           offset:    const Offset(0, 2))
                     ],
                   ),
-                  child: Text(
-                    msg.text,
-                    style: GoogleFonts.dmSans(
-                      fontSize: 15,
-                      color:    isUser
-                          ? Colors.white
-                          : const Color(0xFF0D1B2A),
-                      height: 1.5,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (msg.hasImage && isUser) ...[
+                        Icon(Icons.image_rounded,
+                            color: Colors.white70, size: 16),
+                        const SizedBox(width: 6),
+                      ],
+                      Flexible(
+                        child: Text(
+                          msg.text,
+                          style: GoogleFonts.dmSans(
+                            fontSize: 15,
+                            color:    isUser ? Colors.white : const Color(0xFF0D1B2A),
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 if (!isUser && msg.risk != null && msg.risk != 'low') ...[
@@ -336,18 +580,24 @@ class _TypingIndicator extends StatelessWidget {
   }
 }
 
-// ─── Input Bar ────────────────────────────────────────────────────────────────
+// ─── Input Bar — with image button ───────────────────────────────────────────
 
 class _InputBar extends StatelessWidget {
   final TextEditingController ctrl;
   final VoidCallback           onSend;
+  final VoidCallback           onImageTap;
   final bool                   thinking;
-  const _InputBar({required this.ctrl, required this.onSend, required this.thinking});
+  const _InputBar({
+    required this.ctrl,
+    required this.onSend,
+    required this.thinking,
+    required this.onImageTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -359,6 +609,30 @@ class _InputBar extends StatelessWidget {
       ),
       child: Row(
         children: [
+          // Image attach button
+          GestureDetector(
+            onTap: thinking ? null : onImageTap,
+            child: Container(
+              width: 42, height: 42,
+              decoration: BoxDecoration(
+                color: thinking
+                    ? const Color(0xFFF2F4F7)
+                    : const Color(0xFF00C896).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: thinking
+                      ? const Color(0xFFE4E7EC)
+                      : const Color(0xFF00C896).withOpacity(0.3),
+                ),
+              ),
+              child: Icon(Icons.add_photo_alternate_rounded,
+                  color: thinking
+                      ? const Color(0xFFB0BAC9)
+                      : const Color(0xFF00C896),
+                  size: 20),
+            ),
+          ),
+          const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller:             ctrl,
@@ -369,13 +643,13 @@ class _InputBar extends StatelessWidget {
               decoration: InputDecoration(
                 hintText: thinking
                     ? 'CareLoop AI is thinking…'
-                    : 'Type a message…',
+                    : 'Message or attach medication photo…',
                 hintStyle: GoogleFonts.dmSans(
                     color: const Color(0xFFB0BAC9), fontSize: 14),
               ),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           GestureDetector(
             onTap: thinking ? null : onSend,
             child: AnimatedContainer(
@@ -456,6 +730,20 @@ class _EmptyState extends StatelessWidget {
         Text('Ask me anything about your health',
             style: GoogleFonts.dmSans(
                 color: const Color(0xFF667085), fontSize: 14)),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.camera_alt_rounded,
+                color: Color(0xFF00C896), size: 16),
+            const SizedBox(width: 4),
+            Text('Tap 📎 to send medication photos',
+                style: GoogleFonts.dmSans(
+                    color: const Color(0xFF00C896),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500)),
+          ],
+        ),
       ],
     ),
   );

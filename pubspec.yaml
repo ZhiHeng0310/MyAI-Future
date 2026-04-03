@@ -12,9 +12,9 @@ dependencies:
 
   flutter_local_notifications: ^21.0.0
   timezone: ^0.11.0
-  http: ^1.2.1          # replaces google_generative_ai for Gemini calls
+  http: ^1.2.1
 
-  # Firebase — manual web console config (no FlutterFire CLI needed)
+  # Firebase
   firebase_core: ^4.6.0
   firebase_auth: ^6.3.0
   cloud_firestore: ^6.2.0
@@ -24,6 +24,9 @@ dependencies:
   google_fonts: ^8.0.2
   flutter_animate: ^4.5.0
   fl_chart: ^1.2.0
+
+  # Image picking for AI photo feature
+  image_picker: ^1.1.2
 
   # State & Utils
   provider: ^6.1.2
@@ -38,5 +41,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
-appointment_provider: (already in lib, no extra package needed)

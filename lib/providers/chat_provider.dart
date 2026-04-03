@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../models/checkin_model.dart';
 import '../models/patient_model.dart';
@@ -14,6 +15,7 @@ class ChatMessage {
   final List<String> actions;
   final bool         showBookingPrompt;
   final DateTime     timestamp;
+  final bool         hasImage;
 
   ChatMessage({
     required this.text,
@@ -22,6 +24,7 @@ class ChatMessage {
     this.actions          = const [],
     this.showBookingPrompt = false,
     DateTime? timestamp,
+    this.hasImage = false,
   }) : timestamp = timestamp ?? DateTime.now();
 }
 
@@ -54,12 +57,18 @@ class ChatProvider extends ChangeNotifier {
       );
       _todayQuestion = await _gemini.generateCheckInQuestion(
           patient.diagnosis!, patient.daysSinceVisit);
+    } else {
+      await _gemini.initSession(
+        name: patient.name, diagnosis: 'General',
+        daysSinceVisit: patient.daysSinceVisit, medications: [],
+      );
     }
     _sessionReady = true;
     _messages.add(ChatMessage(
       text: 'Hi ${patient.name.split(' ').first}! 👋 I\'m CareLoop AI. '
           '${_todayQuestion ?? "How are you feeling today?"}\n\n'
-          'I can help with your recovery, medications, or book an appointment. Just ask!',
+          'I can help with your recovery, medications, or book an appointment. '
+          'You can also send me a photo of your medication bill to understand it better!',
       isUser: false,
     ));
     notifyListeners();
@@ -75,7 +84,7 @@ class ChatProvider extends ChangeNotifier {
     if (patient != null) await initSession(patient);
   }
 
-  // ── Send ──────────────────────────────────────────────────────────────────
+  // ── Send text message ──────────────────────────────────────────────────────
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
     _messages.add(ChatMessage(text: text, isUser: true));
@@ -83,7 +92,32 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
 
     final response = await _gemini.sendMessage(text);
+    await _processResponse(response, text);
+  }
 
+  // ── Send message with image ───────────────────────────────────────────────
+  Future<void> sendMessageWithImage(
+      String text, Uint8List imageBytes, String mimeType) async {
+    final displayText = text.isEmpty ? '📷 [Photo sent]' : text;
+    _messages.add(ChatMessage(
+      text: displayText,
+      isUser: true,
+      hasImage: true,
+    ));
+    _thinking = true;
+    notifyListeners();
+
+    final promptText = text.isEmpty
+        ? 'Please analyze this medication bill/receipt and explain what medications are listed, their dosages, and instructions.'
+        : text;
+
+    final response = await _gemini.sendMessageWithImage(
+        promptText, imageBytes, mimeType);
+    await _processResponse(response, promptText);
+  }
+
+  // ── Process AI response ───────────────────────────────────────────────────
+  Future<void> _processResponse(GeminiResponse response, String userText) async {
     String displayMsg     = response.message;
     List<String> finalAct = List.from(response.actions);
     bool showBooking      = false;
@@ -101,12 +135,16 @@ class ChatProvider extends ChangeNotifier {
       finalAct.remove('book_appointment');
     }
 
-    // ── Agentic: health alert ─────────────────────────────────────────────
+    // ── Agentic: health alert — FIXED: properly triggers doctor notification ──
     if (response.actions.contains('alert_doctor') && _patient != null) {
       await _triggerHealthAlert(
-        message:   text,
+        message:   userText,
         riskLevel: response.risk.name,
       );
+      // Add confirmation to message if not already included
+      if (!displayMsg.contains('doctor')) {
+        displayMsg = '$displayMsg\n\n✅ Your doctor has been notified.';
+      }
     }
 
     _messages.add(ChatMessage(
@@ -123,7 +161,7 @@ class ChatProvider extends ChangeNotifier {
       await _db.saveCheckIn(CheckIn(
         id:               '',
         patientId:        _patient!.id,
-        userMessage:      text,
+        userMessage:      userText,
         aiResponse:       displayMsg,
         risk:             response.risk.name,
         actionsTriggered: finalAct,
@@ -133,16 +171,32 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
-  // ── Health alert ──────────────────────────────────────────────────────────
+  // ── Health alert — FIXED: now correctly notifies doctor ──────────────────
   Future<void> _triggerHealthAlert({
     required String message,
     required String riskLevel,
   }) async {
     if (_patient == null) return;
-    final doctorId = _patient!.assignedDoctorId;
-    if (doctorId == null || doctorId.isEmpty) return;
 
-    // Get patient name for alert
+    // Get the assigned doctor ID
+    String? doctorId = _patient!.assignedDoctorId;
+
+    // If no assigned doctor, try to find any doctor
+    if (doctorId == null || doctorId.isEmpty) {
+      final doctors = await _db.getAllDoctors();
+      if (doctors.isNotEmpty) {
+        doctorId = doctors.first.id;
+      }
+    }
+
+    if (doctorId == null || doctorId.isEmpty) {
+      debugPrint('No doctor found to alert');
+      // Still show local notification
+      await NotificationService.showHealthAlert(
+          '${_patient!.name} reported: $message');
+      return;
+    }
+
     final alert = HealthAlert(
       id:          '',
       patientId:   _patient!.id,
@@ -153,9 +207,21 @@ class ChatProvider extends ChangeNotifier {
       status:      'pending',
       createdAt:   DateTime.now(),
     );
-    await _db.createHealthAlert(alert);
 
-    // Local notification for doctor (if on same device — dev testing)
+    // Save alert to Firestore (this also creates doctor inbox message)
+    final alertId = await _db.createHealthAlert(alert);
+    debugPrint('Health alert created: $alertId for doctor: $doctorId');
+
+    // Send push notification to doctor
+    await NotificationService.sendPushToUser(
+      userId:         doctorId,
+      userCollection: 'doctors',
+      title:          '🚨 Patient Health Alert',
+      body:           '${_patient!.name}: $message',
+      channel:        'careloop_alerts',
+    );
+
+    // Local notification (visible when app is open)
     await NotificationService.showHealthAlert(
         '${_patient!.name} reported: $message');
   }
@@ -212,4 +278,13 @@ class ChatProvider extends ChangeNotifier {
     _gemini       = GeminiService(role: GeminiRole.patient);
     notifyListeners();
   }
+
+  // ── Expose patient for booking screen ────────────────────────────────────
+  PatientModel? get patient => _patient;
+}
+
+// ignore: non_constant_identifier_names
+void debugPrint(String msg) {
+  // ignore: avoid_print
+  print(msg);
 }

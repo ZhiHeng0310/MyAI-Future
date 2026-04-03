@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/medication_model.dart';
+import '../models/patient_model.dart';
 import '../services/firestore_service.dart';
 import '../services/notification_service.dart';
 
@@ -9,30 +10,27 @@ class MedicationProvider extends ChangeNotifier {
 
   List<Medication> _medications  = [];
   Timer?           _agentTimer;
+  PatientModel?    _patient;
 
   /// Set of "YYYY-MM-DD_medId_timeSlot" keys — prevents double-firing
-  /// the same missed-dose notification within a day.
   final Set<String> _notifiedSlots = {};
 
   List<Medication> get medications => _medications;
 
-  /// Total slots taken today across all medications.
   int get takenSlotsToday =>
       _medications.fold(0, (s, m) => s + m.takenSlotsToday);
 
-  /// Total slots expected today across all medications.
   int get totalSlotsToday =>
       _medications.fold(0, (s, m) => s + m.totalSlotsToday);
 
-  /// Adherence 0.0–1.0 based on slot-level tracking.
   double get adherenceRate =>
       totalSlotsToday == 0 ? 0 : takenSlotsToday / totalSlotsToday;
 
-  /// Legacy — how many medications are fully taken today.
   int get takenToday => _medications.where((m) => m.isTakenToday).length;
 
   // ── Start listening ───────────────────────────────────────────────────────
-  void startListening(String patientId) {
+  void startListening(String patientId, {PatientModel? patient}) {
+    _patient = patient;
     _db.medicationsStream(patientId).listen((meds) {
       _medications = meds;
       _scheduleSystemNotifications(meds);
@@ -41,19 +39,22 @@ class MedicationProvider extends ChangeNotifier {
 
     // Agentic missed-dose checker — every 60 seconds
     _agentTimer?.cancel();
-    _agentTimer = Timer.periodic(const Duration(minutes: 1), (_) => _checkMissedDoses());
+    _agentTimer = Timer.periodic(
+        const Duration(minutes: 1), (_) => _checkMissedDoses());
     Future.delayed(const Duration(seconds: 10), _checkMissedDoses);
   }
 
+  // ── Update patient reference ──────────────────────────────────────────────
+  void setPatient(PatientModel patient) {
+    _patient = patient;
+  }
+
   // ── Agentic checker ───────────────────────────────────────────────────────
-  /// Fires a notification for each missed slot that is exactly 5 minutes overdue.
-  /// De-duplicates using _notifiedSlots so it only fires once per slot per day.
   void _checkMissedDoses() {
     final now        = DateTime.now();
-    final todayStr   = Medication.slotKey('marker').split('_').first; // "YYYY-MM-DD"
+    final todayStr   = Medication.slotKey('marker').split('_').first;
     final nowMinutes = now.hour * 60 + now.minute;
 
-    // Clear stale notifications from previous days
     _notifiedSlots.removeWhere((k) => !k.startsWith(todayStr));
 
     for (final med in _medications.where((m) => m.active)) {
@@ -61,7 +62,7 @@ class MedicationProvider extends ChangeNotifier {
         final slotMins = _parseTime(timeStr);
         if (slotMins == null) continue;
 
-        final diff      = nowMinutes - slotMins; // minutes since reminder time
+        final diff      = nowMinutes - slotMins;
         final notifKey  = '${todayStr}_${med.id}_$timeStr';
 
         // Fire once, 5–7 minutes after the reminder, if slot not yet taken
@@ -70,7 +71,20 @@ class MedicationProvider extends ChangeNotifier {
             !_notifiedSlots.contains(notifKey)) {
           _notifiedSlots.add(notifKey);
           debugPrint('AgentTimer: missed dose "${med.name}" at $timeStr — notifying');
+
+          // Show local notification immediately
           NotificationService.showMedicationReminder(med.name, med.dosage);
+
+          // Also send push notification (for background/terminated app)
+          if (_patient != null) {
+            NotificationService.sendPushToUser(
+              userId:         _patient!.id,
+              userCollection: 'patients',
+              title:          '💊 Missed Medication',
+              body:           'Time to take ${med.name} (${med.dosage}). You\'re 5 minutes late!',
+              channel:        'careloop_meds',
+            );
+          }
         }
       }
     }
@@ -105,7 +119,6 @@ class MedicationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Legacy — for medications with no reminder times.
   Future<void> logDose(String medicationId, bool taken) async {
     await _db.logDose(medicationId, taken);
     notifyListeners();

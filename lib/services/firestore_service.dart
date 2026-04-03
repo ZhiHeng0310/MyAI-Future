@@ -52,6 +52,14 @@ class FirestoreService {
   Future<void> saveDoctor(DoctorModel d) =>
       _db.collection('doctors').doc(d.id).set(d.toMap());
 
+  /// Get all doctors (used when patient has no assigned doctor)
+  Future<List<DoctorModel>> getAllDoctors() async {
+    final snap = await _db.collection('doctors').limit(10).get();
+    return snap.docs
+        .map((d) => DoctorModel.fromMap(d.data(), d.id))
+        .toList();
+  }
+
   // ─── Queue ────────────────────────────────────────────────────────────────
 
   Stream<List<QueueEntry>> queueStream(String clinicId) => _db
@@ -118,7 +126,6 @@ class FirestoreService {
 
   // ─── Appointments ─────────────────────────────────────────────────────────
 
-  /// Returns all booked (non-cancelled) slots for a doctor on a given date.
   Future<List<String>> getBookedSlots(String doctorId, DateTime date) async {
     final dateStr = _dateKey(date);
     final snap    = await _db
@@ -133,8 +140,6 @@ class FirestoreService {
         .toList();
   }
 
-  /// Returns the next [count] available slots after [from] for a doctor.
-  /// Used to suggest alternatives when a slot is taken.
   Future<List<Map<String, dynamic>>> getAvailableSlots(
       String doctorId, DateTime from, int count) async {
     final schedule = DoctorSchedule(doctorId: doctorId);
@@ -142,7 +147,6 @@ class FirestoreService {
     var   checkDate = from;
 
     while (results.length < count) {
-      // Skip weekends if not in workDays
       if (schedule.workDays.contains(checkDate.weekday)) {
         final booked = await getBookedSlots(doctorId, checkDate);
         for (final slot in schedule.allSlots) {
@@ -153,13 +157,11 @@ class FirestoreService {
         }
       }
       checkDate = checkDate.add(const Duration(days: 1));
-      // Safety: don't search more than 30 days
       if (checkDate.difference(from).inDays > 30) break;
     }
     return results;
   }
 
-  /// Book a slot — returns the new appointment or null if already taken.
   Future<AppointmentSlot?> bookAppointment({
     required String       doctorId,
     required String       doctorName,
@@ -170,24 +172,8 @@ class FirestoreService {
     required List<String> symptoms,
   }) async {
     final dateStr = _dateKey(date);
-
-    // Atomic check-and-write using a transaction
-    AppointmentSlot? result;
-    await _db.runTransaction((tx) async {
-      final existing = await tx.get(
-        _db.collection('appointments').doc(doctorId)
-            .collection('slots')
-            .where('dateKey', isEqualTo: dateStr)
-            .where('timeSlot', isEqualTo: timeSlot)
-            .where('status', whereIn: ['pending', 'confirmed'])
-            .limit(1) as DocumentReference, // workaround: query in tx
-      );
-      // Since Firestore transactions can't query, we check manually below
-    });
-
-    // Simpler approach: check then write (acceptable for clinic scheduling)
     final booked = await getBookedSlots(doctorId, date);
-    if (booked.contains(timeSlot)) return null; // slot taken
+    if (booked.contains(timeSlot)) return null;
 
     final ref  = _db.collection('appointments').doc(doctorId)
         .collection('slots').doc();
@@ -205,8 +191,7 @@ class FirestoreService {
     );
     final data = appt.toMap()..['dateKey'] = dateStr;
     await ref.set(data);
-    result = appt;
-    return result;
+    return appt;
   }
 
   Future<void> cancelAppointment(String doctorId, String slotId) =>
@@ -214,7 +199,6 @@ class FirestoreService {
           .collection('slots').doc(slotId)
           .update({'status': AppointmentStatus.cancelled.name});
 
-  /// Patient's upcoming appointments (across all doctors).
   Stream<List<AppointmentSlot>> patientAppointmentsStream(String patientId) =>
       _db.collectionGroup('slots')
           .where('patientId', isEqualTo: patientId)
@@ -225,7 +209,6 @@ class FirestoreService {
           .map((d) => AppointmentSlot.fromMap(d.data(), d.id))
           .toList());
 
-  /// Doctor's appointment list for a specific date.
   Stream<List<AppointmentSlot>> doctorDayScheduleStream(
       String doctorId, DateTime date) =>
       _db.collection('appointments').doc(doctorId)
@@ -241,23 +224,25 @@ class FirestoreService {
   String _dateKey(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
 
-  // ─── Health alerts ────────────────────────────────────────────────────────
+  // ─── Health alerts — FIXED: properly creates inbox for doctor ────────────
 
   Future<String> createHealthAlert(HealthAlert alert) async {
     final ref = _db.collection('health_alerts').doc();
     await ref.set(alert.toMap());
-    // Also push to doctor's inbox
+
+    // Create doctor inbox message
     await createDoctorInboxMessage(DoctorInboxMessage(
       id:          '',
       doctorId:    alert.doctorId,
       patientId:   alert.patientId,
       patientName: alert.patientName,
-      message:     '🚨 Health alert: ${alert.message}',
+      message:     '🚨 Health alert (${alert.riskLevel.toUpperCase()} risk): ${alert.message}',
       type:        'health_alert',
       alertId:     ref.id,
       read:        false,
       createdAt:   DateTime.now(),
     ));
+
     return ref.id;
   }
 
@@ -310,12 +295,12 @@ class FirestoreService {
           .collection('messages').doc(messageId)
           .update({'read': true});
 
-  // ─── Patient inbox (AI messages from doctor) ──────────────────────────────
+  // ─── Patient inbox ────────────────────────────────────────────────────────
 
   Future<void> createPatientInboxMessage({
     required String patientId,
     required String message,
-    required String type,   // "appointment_request" | "doctor_note"
+    required String type,
     String? doctorId,
   }) =>
       _db.collection('patient_inbox').doc(patientId)
@@ -360,7 +345,6 @@ class FirestoreService {
       active:        true,
     ).toMap());
 
-    // Assign doctor to patient if provided and not yet assigned
     if (doctorId != null) {
       final patient = await getPatient(med.patientId);
       if (patient != null && patient.assignedDoctorId == null) {

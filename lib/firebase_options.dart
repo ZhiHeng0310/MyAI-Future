@@ -39,24 +39,27 @@ class DefaultFirebaseOptions {
   static const _iosBundleId  = String.fromEnvironment('FIREBASE_IOS_BUNDLE_ID',
       defaultValue: 'com.careloop.app');
 
-  // ── Web ───────────────────────────────────────────────────────────────────
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey:            _apiKey,
-    authDomain:        String.fromEnvironment('FIREBASE_AUTH_DOMAIN'),
-    projectId:         _projectId,
-    storageBucket:     _storageBucket,
-    messagingSenderId: _messagingSenderId,
-    appId:             _appIdWeb,
+    apiKey: 'AIzaSyAGfu6muyvZQxiD-i3FBcnVzi62UPijBSE',
+    appId: '1:362769739395:web:44cf4c44059886e25df5b6',
+    messagingSenderId: '362769739395',
+    projectId: 'careloop-b2ec8',
+    authDomain: 'careloop-b2ec8.firebaseapp.com',
+    storageBucket: 'careloop-b2ec8.firebasestorage.app',
+    measurementId: 'G-DRZ9D6P2GH',
+  );
+
+  // ── Web ───────────────────────────────────────────────────────────────────
+
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyAiVM6V3p8lwdcCL4NmhlH8nK-SyX_uEb0',
+    appId: '1:362769739395:android:2ace747fbbdf0c9a5df5b6',
+    messagingSenderId: '362769739395',
+    projectId: 'careloop-b2ec8',
+    storageBucket: 'careloop-b2ec8.firebasestorage.app',
   );
 
   // ── Android ───────────────────────────────────────────────────────────────
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey:            _apiKey,
-    appId:             _appIdAndroid,
-    messagingSenderId: _messagingSenderId,
-    projectId:         _projectId,
-    storageBucket:     _storageBucket,
-  );
 
   // ── iOS ───────────────────────────────────────────────────────────────────
   static const FirebaseOptions ios = FirebaseOptions(

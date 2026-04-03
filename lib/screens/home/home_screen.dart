@@ -30,11 +30,13 @@ class _HomeScreenState extends State<HomeScreen> {
         if (!mounted) return;
         final queueProv = context.read<QueueProvider>();
         final chatProv  = context.read<ChatProvider>();
+        final medProv   = context.read<MedicationProvider>();
 
         queueProv.startListening(patient.id);
-        context.read<MedicationProvider>().startListening(patient.id);
 
-        // Give ChatProvider access to QueueProvider so it can auto-book queue
+        // Pass patient to medication provider so it can send push notifications
+        medProv.startListening(patient.id, patient: patient);
+
         chatProv.setQueueProvider(queueProv);
         chatProv.initSession(patient);
       });
@@ -43,15 +45,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const _navItems = [
     NavigationDestination(
-        icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Home'),
+        icon: Icon(Icons.home_outlined),
+        selectedIcon: Icon(Icons.home_rounded),
+        label: 'Home'),
     NavigationDestination(
-        icon: Icon(Icons.queue_outlined), selectedIcon: Icon(Icons.queue_rounded), label: 'Queue'),
+        icon: Icon(Icons.queue_outlined),
+        selectedIcon: Icon(Icons.queue_rounded),
+        label: 'Queue'),
     NavigationDestination(
         icon: Icon(Icons.chat_bubble_outline_rounded),
-        selectedIcon: Icon(Icons.chat_bubble_rounded), label: 'AI Care'),
+        selectedIcon: Icon(Icons.chat_bubble_rounded),
+        label: 'AI Care'),
     NavigationDestination(
         icon: Icon(Icons.medication_outlined),
-        selectedIcon: Icon(Icons.medication_rounded), label: 'Meds'),
+        selectedIcon: Icon(Icons.medication_rounded),
+        label: 'Meds'),
   ];
 
   @override

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -8,7 +9,7 @@ import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
 import 'providers/queue_provider.dart';
 import 'providers/medication_provider.dart';
-import 'providers/chat_provider.dart';
+import 'providers/chat_provider.dart' hide debugPrint;
 import 'providers/appointment_provider.dart';
 import 'providers/doctor_chat_provider.dart';
 import 'services/notification_service.dart';
@@ -19,11 +20,18 @@ import 'screens/doctor/doctor_home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ── Init Firebase FIRST ─────────────────────────────────────────
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // ── Register FCM background handler ─────────────────────────────
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+  // ── Init notifications ──────────────────────────────────────────
   await NotificationService.init();
-  try {
-    await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform);
-  } catch (e) { debugPrint('Firebase init failed: $e'); }
+
   runApp(const CareLoopApp());
 }
 
@@ -94,10 +102,7 @@ class CareLoopApp extends StatelessWidget {
   }
 }
 
-/// Root auth router — listens to Firebase auth stream.
-/// Patient  → HomeScreen
-/// Doctor   → DoctorHomeScreen
-/// No user  → LoginScreen
+/// Root auth router
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 

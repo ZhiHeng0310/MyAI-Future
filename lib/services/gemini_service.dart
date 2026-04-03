@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import '../app_config.dart';
 import 'notification_service.dart';
@@ -43,6 +44,10 @@ RISK DETECTION:
 - medium: worsening, not improving, high fever, vomiting, can't eat/sleep
 - low: mild symptoms, medication questions, general recovery
 
+IMAGE HANDLING:
+- If a medication bill/receipt image is provided, read and explain: medication names, dosages, frequency, prices, instructions
+- Be helpful and clear when explaining medical documents
+
 BEHAVIOUR:
 - Be warm and empathetic. Answer the actual question first.
 - For "hi/hello" → greet warmly, ask how they feel.
@@ -51,6 +56,7 @@ BEHAVIOUR:
 - For ANY mention of "appointment", "book", "schedule", "see doctor later" → set appointment_intent=true and include "book_appointment" in actions.
 - For urgent "see doctor now/today" → include "join_queue" instead.
 - For high risk → include "alert_doctor" AND high risk level.
+- For worsening symptoms → include "alert_doctor" with medium or high risk.
 - Never diagnose. Never prescribe.
 ''';
 
@@ -75,6 +81,10 @@ ACTIONS:
 patient_id: fill when an action targets a specific patient (use patient name or ID from context)
 send_to_patient: the message text to relay to the patient (when action = send_patient_message or send_appointment_request)
 
+IMAGE HANDLING:
+- If an image is provided (medical image, report, etc.), analyze it and provide clinical observations
+- Describe findings clearly and professionally
+
 BEHAVIOUR:
 - Be concise and clinical.
 - When doctor asks "how is [patient]?" → include "check_patient_status".
@@ -93,6 +103,11 @@ BEHAVIOUR:
   String get _systemPrompt =>
       _role == GeminiRole.doctor ? _doctorSystem : _patientSystem;
 
+  bool get _hasValidKey =>
+      AppConfig.geminiApiKey.isNotEmpty &&
+          AppConfig.geminiApiKey != 'PASTE_GEMINI_API_KEY_HERE' &&
+          AppConfig.geminiApiKey.startsWith('AIza');
+
   // ── Session init ──────────────────────────────────────────────────────────
   Future<void> initSession({
     required String       name,
@@ -101,7 +116,7 @@ BEHAVIOUR:
     required List<String> medications,
     String?               role,
     String?               doctorId,
-    List<String>?         patientSummaries, // for doctor mode
+    List<String>?         patientSummaries,
   }) async {
     if (_ready) return;
     String ctx;
@@ -130,10 +145,36 @@ BEHAVIOUR:
     _ready = false;
   }
 
-  // ── Send message ──────────────────────────────────────────────────────────
+  // ── Send message (text only) ──────────────────────────────────────────────
   Future<GeminiResponse> sendMessage(String msg) async {
     _history.add({'role': 'user', 'parts': [{'text': msg}]});
     final r = await _call(List.from(_history));
+    _history.add({'role': 'model', 'parts': [{'text': r.rawText}]});
+    return r;
+  }
+
+  // ── Send message with image ───────────────────────────────────────────────
+  Future<GeminiResponse> sendMessageWithImage(
+      String msg, Uint8List imageBytes, String mimeType) async {
+    final base64Image = base64Encode(imageBytes);
+    final userParts = [
+      {'text': msg},
+      {
+        'inline_data': {
+          'mime_type': mimeType,
+          'data': base64Image,
+        }
+      }
+    ];
+    _history.add({'role': 'user', 'parts': userParts});
+
+    // For image calls, pass history but with image only in the last message
+    final contentsForApi = List<Map<String, dynamic>>.from(
+        _history.sublist(0, _history.length - 1)
+    );
+    contentsForApi.add({'role': 'user', 'parts': userParts});
+
+    final r = await _call(contentsForApi);
     _history.add({'role': 'model', 'parts': [{'text': r.rawText}]});
     return r;
   }
@@ -153,22 +194,39 @@ BEHAVIOUR:
   // ── HTTP ──────────────────────────────────────────────────────────────────
   Future<GeminiResponse> _call(
       List<Map<String, dynamic>> contents, {int max = 350}) async {
-    if (_noKey) return _fallback(_lastUser(contents));
+    if (!_hasValidKey) {
+      return _fallback(_lastUser(contents));
+    }
     try {
       return GeminiResponse.fromRaw(
           await _raw(contents: contents, maxTokens: max), _role);
     } on _Quota { return _fallback(_lastUser(contents)); }
-    on _Err catch (e) { return GeminiResponse.error(e.msg); }
-    catch (_)       { return _fallback(_lastUser(contents)); }
+    on _Err catch (e) {
+      // Don't use fallback for doctor — return proper error so it's visible
+      if (_role == GeminiRole.doctor) {
+        return GeminiResponse(
+          message: 'API error: ${e.msg}. Please check your Gemini API key in app_config.dart.',
+          actions: [], rawText: '', role: _role,
+        );
+      }
+      return _fallback(_lastUser(contents));
+    }
+    catch (e) {
+      if (_role == GeminiRole.doctor) {
+        return GeminiResponse(
+          message: 'Connection error: $e. Please check your internet connection and API key.',
+          actions: [], rawText: '', role: _role,
+        );
+      }
+      return _fallback(_lastUser(contents));
+    }
   }
-
-  bool get _noKey => AppConfig.geminiApiKey.isEmpty ||
-      AppConfig.geminiApiKey == 'PASTE_GEMINI_API_KEY_HERE';
 
   Future<String> _raw({
     required List<Map<String, dynamic>> contents,
     int maxTokens = 350,
   }) async {
+    if (!_hasValidKey) throw _Err('No valid API key');
     final uri  = Uri.parse('$_baseUrl?key=${AppConfig.geminiApiKey}');
     final body = jsonEncode({
       'system_instruction': {'parts': [{'text': _systemPrompt}]},
@@ -189,7 +247,7 @@ BEHAVIOUR:
       case 429: throw _Quota();
       case 403: throw _Err('Gemini 403 — check API key');
       case 404: throw _Err('Gemini 404 — model not found');
-      default:  throw _Err('Gemini ${res.statusCode}');
+      default:  throw _Err('Gemini ${res.statusCode}: ${res.body}');
     }
   }
 
@@ -197,8 +255,8 @@ BEHAVIOUR:
   GeminiResponse _fallback(String input) {
     if (_role == GeminiRole.doctor) {
       return GeminiResponse(
-        message: 'I\'m having trouble connecting right now. '
-            'Please try again or check your internet connection.',
+        message: 'I\'m unable to connect to the AI service. '
+            'Please ensure your Gemini API key is configured correctly in app_config.dart.',
         actions: [], rawText: '', role: _role,
       );
     }
@@ -206,7 +264,7 @@ BEHAVIOUR:
     if (_has(t, ['appointment','book','schedule','see doctor later','visit next'])) {
       return GeminiResponse(
         message: 'Of course! I\'ll help you book an appointment. '
-            'Please select a date and time in the booking screen.',
+            'Please select a date and time below.',
         risk: RiskLevel.low, actions: ['book_appointment'],
         queueSymptoms: [], appointmentIntent: true,
         appointmentSymptoms: _extractSymptoms(t), rawText: '', role: _role,
@@ -266,7 +324,14 @@ BEHAVIOUR:
   String _lastUser(List<Map<String,dynamic>> c) {
     for (final m in c.reversed) {
       if (m['role'] == 'user') {
-        return ((m['parts'] as List?)?.first?['text'] ?? '') as String;
+        final parts = m['parts'] as List?;
+        if (parts != null) {
+          for (final p in parts) {
+            if (p is Map && p.containsKey('text')) {
+              return p['text'] as String;
+            }
+          }
+        }
       }
     }
     return '';
