@@ -2,25 +2,27 @@
 //  app_config.dart
 //  CareLoop — Centralised App Configuration
 //
-//  FILL IN YOUR KEYS HERE before running the app.
-//  For production: use --dart-define at build time instead.
+//  Keys are injected at build time via --dart-define-from-file.
+//  Never hardcode secrets here.
 //
-//  Example build command with dart-define:
-//    flutter run --dart-define=GEMINI_KEY=AIza...
+//  Run / build commands:
+//    flutter run   --dart-define-from-file=env.json
+//    flutter build apk --dart-define-from-file=env.json
 //
-//  Then replace the fallback string with:
-//    static const geminiApiKey = String.fromEnvironment('GEMINI_KEY');
+//  Copy env.example.json → env.json and fill in your values.
+//  env.json is gitignored — never commit it.
 // ============================================================
 
 class AppConfig {
   // ─── Gemini ─────────────────────────────────────────────────────────────
   // Get your key from: https://aistudio.google.com/app/apikey
-  static const String geminiApiKey = 'AIzaSyAODsBaJ_Gs6WOCuj0AiK69lB2x4eCAjQc';
+  static const String geminiApiKey =
+  String.fromEnvironment('GEMINI_KEY', defaultValue: '');
 
   // ─── Clinic ──────────────────────────────────────────────────────────────
-  // Default clinic ID used for the queue. Change for multi-clinic support.
-  static const String defaultClinicId = 'clinic_main';
+  static const String defaultClinicId =
+  String.fromEnvironment('DEFAULT_CLINIC_ID', defaultValue: 'clinic_main');
 
   // ─── Gemini Model ────────────────────────────────────────────────────────
-  static const String geminiModel = 'gemini-1.5-flash'; // cost-efficient
+  static const String geminiModel = 'gemini-1.5-flash';
 }

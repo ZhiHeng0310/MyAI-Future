@@ -1,3 +1,11 @@
+// ============================================================
+//  firebase_options.dart  (auto-generated — DO NOT EDIT manually)
+//
+//  All values are injected via --dart-define-from-file=env.json.
+//  Copy env.example.json → env.json and fill in your Firebase
+//  project values. env.json is gitignored.
+// ============================================================
+
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
@@ -15,33 +23,49 @@ class DefaultFirebaseOptions {
     }
   }
 
-  // Web — fill this in later if you register a Web app in Firebase Console
+  // ── Shared Firebase values ────────────────────────────────────────────────
+  static const _apiKey            = String.fromEnvironment('FIREBASE_API_KEY');
+  static const _projectId         = String.fromEnvironment('FIREBASE_PROJECT_ID');
+  static const _storageBucket     = String.fromEnvironment('FIREBASE_STORAGE_BUCKET');
+  static const _messagingSenderId = String.fromEnvironment('FIREBASE_MESSAGING_SENDER_ID');
+
+  // ── Platform-specific App IDs ─────────────────────────────────────────────
+  static const _appIdWeb     = String.fromEnvironment('FIREBASE_APP_ID_WEB');
+  static const _appIdAndroid = String.fromEnvironment('FIREBASE_APP_ID_ANDROID');
+  static const _appIdIos     = String.fromEnvironment('FIREBASE_APP_ID_IOS');
+
+  // ── iOS extras ────────────────────────────────────────────────────────────
+  static const _iosClientId  = String.fromEnvironment('FIREBASE_IOS_CLIENT_ID');
+  static const _iosBundleId  = String.fromEnvironment('FIREBASE_IOS_BUNDLE_ID',
+      defaultValue: 'com.careloop.app');
+
+  // ── Web ───────────────────────────────────────────────────────────────────
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey:            'AIzaSyAiVM6V3p8lwdcCL4NmhlH8nK-SyX_uEb0',
-    authDomain:        'careloop-b2ec8.firebaseapp.com',
-    projectId:         'careloop-b2ec8',
-    storageBucket:     'careloop-b2ec8.firebasestorage.app',
-    messagingSenderId: '362769739395',
-    appId:             '1:362769739395:android:af3daf6395a498475df5b6',
+    apiKey:            _apiKey,
+    authDomain:        String.fromEnvironment('FIREBASE_AUTH_DOMAIN'),
+    projectId:         _projectId,
+    storageBucket:     _storageBucket,
+    messagingSenderId: _messagingSenderId,
+    appId:             _appIdWeb,
   );
 
-  // Android — from your google-services.json
+  // ── Android ───────────────────────────────────────────────────────────────
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey:            'AIzaSyAiVM6V3p8lwdcCL4NmhlH8nK-SyX_uEb0',  // api_key[0].current_key
-    appId:             '1:362769739395:android:af3daf6395a498475df5b6', // mobilesdk_app_id
-    messagingSenderId: '362769739395',                                 // project_number
-    projectId:         'careloop-b2ec8',                               // project_id
-    storageBucket:     'careloop-b2ec8.firebasestorage.app',           // storage_bucket
+    apiKey:            _apiKey,
+    appId:             _appIdAndroid,
+    messagingSenderId: _messagingSenderId,
+    projectId:         _projectId,
+    storageBucket:     _storageBucket,
   );
 
-  // iOS — fill this in when you add an iOS app in Firebase Console
+  // ── iOS ───────────────────────────────────────────────────────────────────
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey:            'AIzaSyAiVM6V3p8lwdcCL4NmhlH8nK-SyX_uEb0',
-    appId:             '1:362769739395:ios:af3daf6395a498475df5b6',
-    messagingSenderId: '362769739395',
-    projectId:         'careloop-b2ec8',
-    storageBucket:     'careloop-b2ec8.firebasestorage.app',
-    iosClientId:       'YOUR_IOS_CLIENT_ID',
-    iosBundleId:       'com.careloop.app',
+    apiKey:            _apiKey,
+    appId:             _appIdIos,
+    messagingSenderId: _messagingSenderId,
+    projectId:         _projectId,
+    storageBucket:     _storageBucket,
+    iosClientId:       _iosClientId,
+    iosBundleId:       _iosBundleId,
   );
 }
