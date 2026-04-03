@@ -13,9 +13,9 @@ class DoctorPatientsScreen extends StatefulWidget {
 }
 
 class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
-  final _db           = FirestoreService();
-  final _searchCtrl   = TextEditingController();
-  String _query       = '';
+  final _db         = FirestoreService();
+  final _searchCtrl = TextEditingController();
+  String _query = '';
 
   @override
   void dispose() {
@@ -31,8 +31,8 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: TextField(
-            controller:  _searchCtrl,
-            onChanged:   (v) => setState(() => _query = v.toLowerCase()),
+            controller: _searchCtrl,
+            onChanged:  (v) => setState(() => _query = v.toLowerCase()),
             decoration: InputDecoration(
               hintText:   'Search patient by name or email…',
               prefixIcon: const Icon(Icons.search_rounded,
@@ -64,20 +64,27 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
               final all      = snap.data ?? [];
               final filtered = _query.isEmpty
                   ? all
-                  : all
-                  .where((p) =>
+                  : all.where((p) =>
               p.name.toLowerCase().contains(_query) ||
                   p.email.toLowerCase().contains(_query))
                   .toList();
 
               if (filtered.isEmpty) {
                 return Center(
-                  child: Text(
-                    _query.isEmpty
-                        ? 'No patients registered yet.'
-                        : 'No patients match "$_query".',
-                    style: GoogleFonts.dmSans(
-                        color: const Color(0xFF667085)),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.people_outline_rounded,
+                          color: Color(0xFF667085), size: 48),
+                      const SizedBox(height: 12),
+                      Text(
+                        _query.isEmpty
+                            ? 'No patients registered yet.'
+                            : 'No patients match "$_query".',
+                        style: GoogleFonts.dmSans(
+                            color: const Color(0xFF667085)),
+                      ),
+                    ],
                   ),
                 );
               }
@@ -85,7 +92,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
               return ListView.builder(
                 padding:     const EdgeInsets.fromLTRB(16, 4, 16, 16),
                 itemCount:   filtered.length,
-                itemBuilder: (ctx, i) =>
+                itemBuilder: (_, i) =>
                     _PatientCard(patient: filtered[i], db: _db),
               );
             },
@@ -98,10 +105,17 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
 
 // ─── Patient Card ─────────────────────────────────────────────────────────────
 
-class _PatientCard extends StatelessWidget {
+class _PatientCard extends StatefulWidget {
   final PatientModel     patient;
   final FirestoreService db;
   const _PatientCard({required this.patient, required this.db});
+
+  @override
+  State<_PatientCard> createState() => _PatientCardState();
+}
+
+class _PatientCardState extends State<_PatientCard> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -111,112 +125,202 @@ class _PatientCard extends StatelessWidget {
         color:        Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.04), blurRadius: 8)
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)
         ],
       ),
-      child: ExpansionTile(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14)),
-        leading: CircleAvatar(
-          backgroundColor: const Color(0xFF00C896).withOpacity(0.15),
-          child: Text(
-            patient.name.isNotEmpty
-                ? patient.name[0].toUpperCase()
-                : '?',
-            style: const TextStyle(
-                color:      Color(0xFF00C896),
-                fontWeight: FontWeight.w700),
+      child: Column(
+        children: [
+          // ── Header row (always visible) ────────────────────────────────
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor:
+                    const Color(0xFF00C896).withOpacity(0.15),
+                    child: Text(
+                      widget.patient.name.isNotEmpty
+                          ? widget.patient.name[0].toUpperCase()
+                          : '?',
+                      style: const TextStyle(
+                          color:      Color(0xFF00C896),
+                          fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.patient.name,
+                            style: GoogleFonts.dmSans(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15)),
+                        Text(widget.patient.email,
+                            style: GoogleFonts.dmSans(
+                                fontSize: 12,
+                                color: const Color(0xFF667085))),
+                        if (widget.patient.diagnosis != null)
+                          Text('Dx: ${widget.patient.diagnosis}',
+                              style: GoogleFonts.dmSans(
+                                  fontSize: 11,
+                                  color: const Color(0xFF00C896),
+                                  fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
+                  // ✅ FIX 2: Add medication button always visible
+                  IconButton(
+                    icon:     const Icon(Icons.medication_rounded,
+                        color: Color(0xFF00C896)),
+                    tooltip:  'Add Medication',
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => DoctorAddMedicationScreen(
+                            patient: widget.patient),
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    _expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    color: const Color(0xFF667085),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-        title: Text(patient.name,
-            style: GoogleFonts.dmSans(
-                fontWeight: FontWeight.w600, fontSize: 15)),
-        subtitle: Text(patient.email,
-            style: GoogleFonts.dmSans(
-                fontSize: 12, color: const Color(0xFF667085))),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Add medication button
-            IconButton(
-              icon:    const Icon(Icons.add_circle_rounded,
-                  color: Color(0xFF00C896)),
-              tooltip: 'Add Medication',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      DoctorAddMedicationScreen(patient: patient),
+
+          // ── Expanded: Medications ──────────────────────────────────────
+          if (_expanded)
+            Container(
+              decoration: BoxDecoration(
+                color:        const Color(0xFFF8FFFE),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft:  Radius.circular(14),
+                  bottomRight: Radius.circular(14),
+                ),
+                border: Border(
+                  top: BorderSide(color: Colors.grey.shade100),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                // ✅ FIX 2: StreamBuilder for live medication updates
+                child: StreamBuilder<List<Medication>>(
+                  stream: widget.db.medicationsStream(widget.patient.id),
+                  builder: (ctx, snap) {
+                    if (snap.connectionState == ConnectionState.waiting) {
+                      return const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: LinearProgressIndicator(
+                            color: Color(0xFF00C896)),
+                      );
+                    }
+
+                    if (snap.hasError) {
+                      return Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Row(
+                          children: [
+                            Icon(Icons.warning_amber_rounded,
+                                color: Colors.orange.shade600, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Unable to load medications. '
+                                    'Ensure Firestore rules are deployed.',
+                                style: GoogleFonts.dmSans(
+                                    fontSize: 12,
+                                    color: Colors.orange.shade700),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    final meds = snap.data ?? [];
+
+                    if (meds.isEmpty) {
+                      return Row(
+                        children: [
+                          const Icon(Icons.info_outline_rounded,
+                              color: Color(0xFF667085), size: 16),
+                          const SizedBox(width: 8),
+                          Text('No medications assigned yet.',
+                              style: GoogleFonts.dmSans(
+                                  color: const Color(0xFF667085),
+                                  fontSize: 13)),
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => DoctorAddMedicationScreen(
+                                    patient: widget.patient),
+                              ),
+                            ),
+                            icon: const Icon(Icons.add_rounded,
+                                size: 14, color: Color(0xFF00C896)),
+                            label: Text('Add',
+                                style: GoogleFonts.dmSans(
+                                    color: const Color(0xFF00C896),
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13)),
+                          ),
+                        ],
+                      );
+                    }
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text('Medications',
+                                style: GoogleFonts.dmSans(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize:   13,
+                                    color:      const Color(0xFF344054))),
+                            const Spacer(),
+                            Text('${meds.length} assigned',
+                                style: GoogleFonts.dmSans(
+                                    fontSize: 11,
+                                    color: const Color(0xFF667085))),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        ...meds.map((m) => _MedRow(
+                          med:      m,
+                          onRemove: () =>
+                              widget.db.deactivateMedication(m.id),
+                        )),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
-            const Icon(Icons.expand_more_rounded,
-                color: Color(0xFF667085)),
-          ],
-        ),
-        children: [
-          // Medications list
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: StreamBuilder<List<Medication>>(
-              stream: db.medicationsStream(patient.id),
-              builder: (ctx, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: LinearProgressIndicator(
-                        color: Color(0xFF00C896)),
-                  );
-                }
-                final meds = snap.data ?? [];
-                if (meds.isEmpty) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text('No medications assigned.',
-                        style: GoogleFonts.dmSans(
-                            color: const Color(0xFF667085),
-                            fontSize: 13)),
-                  );
-                }
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Medications',
-                        style: GoogleFonts.dmSans(
-                            fontWeight: FontWeight.w600,
-                            fontSize:   13,
-                            color:      const Color(0xFF344054))),
-                    const SizedBox(height: 8),
-                    ...meds.map((m) => _MedRow(
-                      med: m,
-                      db:  db,
-                      onRemove: () =>
-                          db.deactivateMedication(m.id),
-                    )),
-                  ],
-                );
-              },
-            ),
-          ),
         ],
       ),
     );
   }
 }
 
-// ─── Medication Row inside patient card ──────────────────────────────────────
+// ─── Medication Row ───────────────────────────────────────────────────────────
 
 class _MedRow extends StatelessWidget {
-  final Medication       med;
-  final FirestoreService db;
-  final VoidCallback     onRemove;
-  const _MedRow(
-      {required this.med, required this.db, required this.onRemove});
+  final Medication   med;
+  final VoidCallback onRemove;
+  const _MedRow({required this.med, required this.onRemove});
 
   @override
   Widget build(BuildContext context) {
-    final taken   = med.isTakenToday;
-    final takePct = taken ? 1.0 : 0.0; // simple today-only indicator
+    final taken = med.isTakenToday;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -234,14 +338,25 @@ class _MedRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
-            taken
-                ? Icons.check_circle_rounded
-                : Icons.radio_button_unchecked_rounded,
-            color: taken ? const Color(0xFF00C896) : Colors.orange,
-            size:  20,
+          // Status icon
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: taken
+                  ? const Color(0xFF00C896).withOpacity(0.12)
+                  : Colors.orange.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              taken
+                  ? Icons.check_circle_rounded
+                  : Icons.radio_button_unchecked_rounded,
+              color: taken ? const Color(0xFF00C896) : Colors.orange,
+              size: 20,
+            ),
           ),
           const SizedBox(width: 10),
+          // Medication info
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,9 +372,14 @@ class _MedRow extends StatelessWidget {
                   style: GoogleFonts.dmSans(
                       fontSize: 11, color: const Color(0xFF667085)),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
+                // Slot-level adherence: e.g. "2 of 3 doses taken today"
                 Text(
-                  taken ? '✓ Taken today' : '⚠ Not taken yet today',
+                  taken
+                      ? '✓ All doses taken today'
+                      : med.reminderTimes.isEmpty
+                      ? '⚠ Not taken yet today'
+                      : '${med.takenSlotsToday}/${med.totalSlotsToday} doses taken today',
                   style: TextStyle(
                     fontSize:   11,
                     fontWeight: FontWeight.w600,
@@ -271,7 +391,7 @@ class _MedRow extends StatelessWidget {
               ],
             ),
           ),
-          // Remove (deactivate) medication
+          // Remove button
           IconButton(
             icon:     const Icon(Icons.delete_outline_rounded,
                 color: Color(0xFF667085), size: 18),
@@ -287,20 +407,30 @@ class _MedRow extends StatelessWidget {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title:   const Text('Remove Medication'),
-        content: Text('Remove ${med.name} from this patient?'),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16)),
+        title:   Text('Remove Medication',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
+        content: Text('Remove ${med.name} from this patient?',
+            style: GoogleFonts.dmSans()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child:     const Text('Cancel'),
+            child: Text('Cancel',
+                style: TextStyle(color: Colors.grey.shade600)),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: () {
               onRemove();
               Navigator.pop(context);
             },
-            child: Text('Remove',
-                style: TextStyle(color: Colors.red.shade600)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade600,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Remove'),
           ),
         ],
       ),

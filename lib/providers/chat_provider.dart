@@ -17,14 +17,19 @@ class ChatMessage {
   final DateTime     timestamp;
   final bool         hasImage;
 
+  /// ✅ FIX 1: Store appointment symptoms from Gemini so booking screen
+  /// receives actual medical symptoms, not action label strings.
+  final List<String> appointmentSymptoms;
+
   ChatMessage({
     required this.text,
     required this.isUser,
     this.risk,
-    this.actions          = const [],
-    this.showBookingPrompt = false,
+    this.actions              = const [],
+    this.showBookingPrompt    = false,
     DateTime? timestamp,
-    this.hasImage = false,
+    this.hasImage             = false,
+    this.appointmentSymptoms  = const [],
   }) : timestamp = timestamp ?? DateTime.now();
 }
 
@@ -43,6 +48,7 @@ class ChatProvider extends ChangeNotifier {
   bool              get thinking      => _thinking;
   bool              get sessionReady  => _sessionReady;
   String?           get todayQuestion => _todayQuestion;
+  PatientModel?     get patient       => _patient;
 
   void setQueueProvider(QueueProvider qp) => _queueProvider = qp;
 
@@ -100,8 +106,8 @@ class ChatProvider extends ChangeNotifier {
       String text, Uint8List imageBytes, String mimeType) async {
     final displayText = text.isEmpty ? '📷 [Photo sent]' : text;
     _messages.add(ChatMessage(
-      text: displayText,
-      isUser: true,
+      text:     displayText,
+      isUser:   true,
       hasImage: true,
     ));
     _thinking = true;
@@ -118,9 +124,9 @@ class ChatProvider extends ChangeNotifier {
 
   // ── Process AI response ───────────────────────────────────────────────────
   Future<void> _processResponse(GeminiResponse response, String userText) async {
-    String displayMsg     = response.message;
-    List<String> finalAct = List.from(response.actions);
-    bool showBooking      = false;
+    String       displayMsg = response.message;
+    List<String> finalAct   = List.from(response.actions);
+    bool         showBooking = false;
 
     // ── Agentic: join queue ────────────────────────────────────────────────
     if (response.actions.contains('join_queue')) {
@@ -128,31 +134,31 @@ class ChatProvider extends ChangeNotifier {
       finalAct.remove('join_queue');
     }
 
-    // ── Agentic: appointment booking intent ────────────────────────────────
-    if (response.actions.contains('book_appointment') ||
-        response.appointmentIntent) {
+    // ── Agentic: appointment booking ───────────────────────────────────────
+    if (response.actions.contains('book_appointment') || response.appointmentIntent) {
       showBooking = true;
       finalAct.remove('book_appointment');
     }
 
-    // ── Agentic: health alert — FIXED: properly triggers doctor notification ──
+    // ── Agentic: health alert ──────────────────────────────────────────────
     if (response.actions.contains('alert_doctor') && _patient != null) {
       await _triggerHealthAlert(
         message:   userText,
         riskLevel: response.risk.name,
       );
-      // Add confirmation to message if not already included
       if (!displayMsg.contains('doctor')) {
         displayMsg = '$displayMsg\n\n✅ Your doctor has been notified.';
       }
     }
 
+    // ✅ FIX 1: Store appointmentSymptoms from Gemini response
     _messages.add(ChatMessage(
-      text:              displayMsg,
-      isUser:            false,
-      risk:              response.risk.name,
-      actions:           finalAct,
-      showBookingPrompt: showBooking,
+      text:                displayMsg,
+      isUser:              false,
+      risk:                response.risk.name,
+      actions:             finalAct,
+      showBookingPrompt:   showBooking,
+      appointmentSymptoms: response.appointmentSymptoms, // ← correct symptoms
     ));
     _thinking = false;
     notifyListeners();
@@ -171,27 +177,19 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
-  // ── Health alert — FIXED: now correctly notifies doctor ──────────────────
+  // ── Health alert ──────────────────────────────────────────────────────────
   Future<void> _triggerHealthAlert({
     required String message,
     required String riskLevel,
   }) async {
     if (_patient == null) return;
 
-    // Get the assigned doctor ID
     String? doctorId = _patient!.assignedDoctorId;
-
-    // If no assigned doctor, try to find any doctor
     if (doctorId == null || doctorId.isEmpty) {
       final doctors = await _db.getAllDoctors();
-      if (doctors.isNotEmpty) {
-        doctorId = doctors.first.id;
-      }
+      if (doctors.isNotEmpty) doctorId = doctors.first.id;
     }
-
     if (doctorId == null || doctorId.isEmpty) {
-      debugPrint('No doctor found to alert');
-      // Still show local notification
       await NotificationService.showHealthAlert(
           '${_patient!.name} reported: $message');
       return;
@@ -208,11 +206,9 @@ class ChatProvider extends ChangeNotifier {
       createdAt:   DateTime.now(),
     );
 
-    // Save alert to Firestore (this also creates doctor inbox message)
     final alertId = await _db.createHealthAlert(alert);
     debugPrint('Health alert created: $alertId for doctor: $doctorId');
 
-    // Send push notification to doctor
     await NotificationService.sendPushToUser(
       userId:         doctorId,
       userCollection: 'doctors',
@@ -221,7 +217,6 @@ class ChatProvider extends ChangeNotifier {
       channel:        'careloop_alerts',
     );
 
-    // Local notification (visible when app is open)
     await NotificationService.showHealthAlert(
         '${_patient!.name} reported: $message');
   }
@@ -278,9 +273,6 @@ class ChatProvider extends ChangeNotifier {
     _gemini       = GeminiService(role: GeminiRole.patient);
     notifyListeners();
   }
-
-  // ── Expose patient for booking screen ────────────────────────────────────
-  PatientModel? get patient => _patient;
 }
 
 // ignore: non_constant_identifier_names

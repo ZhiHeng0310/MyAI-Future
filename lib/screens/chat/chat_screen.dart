@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -6,7 +6,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/appointment_provider.dart';
 import '../../services/firestore_service.dart';
 import '../../widgets/risk_badge.dart';
 import '../appointment/appointment_booking_screen.dart';
@@ -49,27 +48,22 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ── Pick and send image ───────────────────────────────────────────────────
   Future<void> _pickImage(ImageSource source) async {
+    if (kIsWeb && source == ImageSource.camera) return;
     try {
       final XFile? file = await _picker.pickImage(
-        source: source,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
+        source: source, maxWidth: 1024, maxHeight: 1024, imageQuality: 85,
       );
       if (file == null || !mounted) return;
-
-      final bytes = await file.readAsBytes();
+      final bytes    = await file.readAsBytes();
       final mimeType = file.mimeType ?? 'image/jpeg';
-      final text = _ctrl.text.trim();
+      final text     = _ctrl.text.trim();
       _ctrl.clear();
-
       if (!mounted) return;
       context.read<ChatProvider>().sendMessageWithImage(
         text.isEmpty
             ? 'Please analyze this medication bill/receipt and explain it to me.'
             : text,
-        bytes,
-        mimeType,
+        bytes, mimeType,
       );
       Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
     } catch (e) {
@@ -99,25 +93,27 @@ class _ChatScreenState extends State<ChatScreen> {
                       fontWeight: FontWeight.w700, fontSize: 16)),
               const SizedBox(height: 6),
               Text(
-                'Send a photo of your medication bill or receipt for AI analysis',
+                'Send a photo of your medication bill or receipt for AI analysis.',
                 style: GoogleFonts.dmSans(
                     color: const Color(0xFF667085), fontSize: 13),
               ),
               const SizedBox(height: 20),
               Row(
                 children: [
-                  Expanded(
-                    child: _ImageOptionBtn(
-                      icon: Icons.camera_alt_rounded,
-                      label: 'Camera',
-                      color: const Color(0xFF00C896),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _pickImage(ImageSource.camera);
-                      },
+                  if (!kIsWeb) ...[
+                    Expanded(
+                      child: _ImageOptionBtn(
+                        icon: Icons.camera_alt_rounded,
+                        label: 'Camera',
+                        color: const Color(0xFF00C896),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _pickImage(ImageSource.camera);
+                        },
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
+                    const SizedBox(width: 12),
+                  ],
                   Expanded(
                     child: _ImageOptionBtn(
                       icon: Icons.photo_library_rounded,
@@ -139,32 +135,49 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ── Open booking screen ───────────────────────────────────────────────────
+  // ── FIX 1: Open booking screen with actual appointment symptoms ───────────
   Future<void> _openBookingScreen(List<String> symptoms) async {
-    final auth = context.read<AuthProvider>();
+    final auth    = context.read<AuthProvider>();
     final patient = auth.patient;
     if (patient == null) return;
 
-    // Get first available doctor
-    final db = FirestoreService();
+    // Show loading while fetching doctors
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: CircularProgressIndicator(color: Color(0xFF00C896)),
+        ),
+      );
+    }
+
+    final db      = FirestoreService();
     final doctors = await db.getAllDoctors();
+
+    if (!mounted) return;
+    Navigator.pop(context); // close loading dialog
+
     if (doctors.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No doctors available. Please contact the clinic.'),
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No doctors available at the moment. Please contact the clinic directly.',
           ),
-        );
-      }
+          backgroundColor: Color(0xFF0D1B2A),
+        ),
+      );
       return;
     }
 
+    // ✅ FIX 1: Pass actual symptom list (not actions) to booking screen
+    // The booking screen shows calendar + time slots for the user to pick
     if (!mounted) return;
-    Navigator.of(context).push(MaterialPageRoute(
+    await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => AppointmentBookingScreen(
         doctor:          doctors.first,
         patient:         patient,
-        initialSymptoms: symptoms,
+        initialSymptoms: symptoms.isNotEmpty ? symptoms : ['General consultation'],
       ),
     ));
   }
@@ -236,9 +249,7 @@ class _ChatScreenState extends State<ChatScreen> {
               padding:    const EdgeInsets.fromLTRB(16, 16, 16, 8),
               itemCount:  chat.messages.length + (chat.thinking ? 1 : 0),
               itemBuilder: (ctx, i) {
-                if (i == chat.messages.length) {
-                  return const _TypingIndicator();
-                }
+                if (i == chat.messages.length) return const _TypingIndicator();
                 final msg = chat.messages[i];
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -247,17 +258,13 @@ class _ChatScreenState extends State<ChatScreen> {
                         .animate()
                         .fadeIn(duration: 250.ms)
                         .slideY(begin: 0.15),
-                    // ── Booking CTA ──────────────────────────────────
+                    // ── Booking CTA with correct symptoms ─────────────
                     if (msg.showBookingPrompt && !msg.isUser)
                       Padding(
                         padding: const EdgeInsets.only(left: 38, bottom: 8),
                         child: _BookingCTA(
-                          onTap: () => _openBookingScreen(
-                            chat.messages
-                                .where((m) => !m.isUser)
-                                .lastOrNull
-                                ?.actions ?? [],
-                          ),
+                          // ✅ FIX 1: Pass appointmentSymptoms, not actions
+                          onTap: () => _openBookingScreen(msg.appointmentSymptoms),
                         ),
                       ),
                   ],
@@ -268,10 +275,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
           // ── Input bar ─────────────────────────────────────────────────────
           _InputBar(
-            ctrl:           _ctrl,
-            onSend:         _send,
-            thinking:       chat.thinking,
-            onImageTap:     _showImageOptions,
+            ctrl:       _ctrl,
+            onSend:     _send,
+            thinking:   chat.thinking,
+            onImageTap: _showImageOptions,
           ),
         ],
       ),
@@ -299,8 +306,7 @@ class _BookingCTA extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: const Color(0xFF6C63FF).withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
+              blurRadius: 8, offset: const Offset(0, 3),
             )
           ],
         ),
@@ -354,9 +360,7 @@ class _ImageOptionBtn extends StatelessWidget {
             const SizedBox(height: 8),
             Text(label,
                 style: TextStyle(
-                    color:      color,
-                    fontWeight: FontWeight.w600,
-                    fontSize:   13)),
+                    color: color, fontWeight: FontWeight.w600, fontSize: 13)),
           ],
         ),
       ),
@@ -457,7 +461,7 @@ class _MessageBubble extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (msg.hasImage && isUser) ...[
-                        Icon(Icons.image_rounded,
+                        const Icon(Icons.image_rounded,
                             color: Colors.white70, size: 16),
                         const SizedBox(width: 6),
                       ],
@@ -466,7 +470,9 @@ class _MessageBubble extends StatelessWidget {
                           msg.text,
                           style: GoogleFonts.dmSans(
                             fontSize: 15,
-                            color:    isUser ? Colors.white : const Color(0xFF0D1B2A),
+                            color:    isUser
+                                ? Colors.white
+                                : const Color(0xFF0D1B2A),
                             height: 1.5,
                           ),
                         ),
@@ -519,8 +525,7 @@ class _ActionChip extends StatelessWidget {
       border:       Border.all(color: const Color(0xFFFFE083)),
     ),
     child: Text(label,
-        style: const TextStyle(
-            fontSize: 11, color: Color(0xFF7A5900))),
+        style: const TextStyle(fontSize: 11, color: Color(0xFF7A5900))),
   );
 }
 
@@ -567,11 +572,8 @@ class _TypingIndicator extends StatelessWidget {
                     color: Color(0xFF00C896), shape: BoxShape.circle),
               )
                   .animate(onPlay: (c) => c.repeat())
-                  .fadeOut(
-                  delay:    Duration(milliseconds: i * 200),
-                  duration: 400.ms)
-                  .then()
-                  .fadeIn(duration: 400.ms)),
+                  .fadeOut(delay: Duration(milliseconds: i * 200), duration: 400.ms)
+                  .then().fadeIn(duration: 400.ms)),
             ),
           ),
         ],
@@ -580,7 +582,7 @@ class _TypingIndicator extends StatelessWidget {
   }
 }
 
-// ─── Input Bar — with image button ───────────────────────────────────────────
+// ─── Input Bar ────────────────────────────────────────────────────────────────
 
 class _InputBar extends StatelessWidget {
   final TextEditingController ctrl;
@@ -588,10 +590,8 @@ class _InputBar extends StatelessWidget {
   final VoidCallback           onImageTap;
   final bool                   thinking;
   const _InputBar({
-    required this.ctrl,
-    required this.onSend,
-    required this.thinking,
-    required this.onImageTap,
+    required this.ctrl, required this.onSend,
+    required this.thinking, required this.onImageTap,
   });
 
   @override
@@ -602,14 +602,12 @@ class _InputBar extends StatelessWidget {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-              color:     Colors.black.withOpacity(0.06),
-              blurRadius: 12,
-              offset:    const Offset(0, -4))
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 12, offset: const Offset(0, -4))
         ],
       ),
       child: Row(
         children: [
-          // Image attach button
           GestureDetector(
             onTap: thinking ? null : onImageTap,
             child: Container(
@@ -635,11 +633,11 @@ class _InputBar extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
-              controller:             ctrl,
-              onSubmitted:            (_) => onSend(),
-              enabled:                !thinking,
-              maxLines:               null,
-              textCapitalization:     TextCapitalization.sentences,
+              controller:         ctrl,
+              onSubmitted:        (_) => onSend(),
+              enabled:            !thinking,
+              maxLines:           null,
+              textCapitalization: TextCapitalization.sentences,
               decoration: InputDecoration(
                 hintText: thinking
                     ? 'CareLoop AI is thinking…'
@@ -740,8 +738,7 @@ class _EmptyState extends StatelessWidget {
             Text('Tap 📎 to send medication photos',
                 style: GoogleFonts.dmSans(
                     color: const Color(0xFF00C896),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500)),
+                    fontSize: 12, fontWeight: FontWeight.w500)),
           ],
         ),
       ],
