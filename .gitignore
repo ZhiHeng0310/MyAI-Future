@@ -7,6 +7,8 @@ ios/Runner/GoogleService-Info.plist
 .flutter-plugins
 .flutter-plugins-dependencies
 .packages
+lib/app_config.dart
+lib/firebase_options.dart
 build/
 *.iml
 
