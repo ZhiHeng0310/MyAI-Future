@@ -1,3 +1,4 @@
+import 'package:careloop/screens/ai_chat_screen_gemini.dart';
 import 'package:careloop/screens/inbox_screen.dart';
 import 'package:careloop/services/medication_reminder_service.dart';
 import 'package:careloop/widgets/notification_popup.dart';
@@ -65,7 +66,6 @@ class CareLoopApp extends StatelessWidget {
           useMaterial3: true,
         ),
         routes: {
-          '/': (context) => const HomeScreen(),
           '/inbox': (context) => const InboxScreen(),
         },
         home: const NotificationWrapper(),

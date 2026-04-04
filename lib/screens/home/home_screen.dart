@@ -6,6 +6,7 @@ import '../../providers/queue_provider.dart';
 import '../../providers/medication_provider.dart';
 import '../../providers/chat_provider.dart';
 
+import '../ai_chat_screen_gemini.dart';
 import 'dashboard_tab.dart';
 import '../queue/queue_screen.dart';
 import '../chat/chat_screen.dart';
@@ -92,7 +93,17 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
 
       const QueueScreen(),
-      const ChatScreen(),
+      Builder(
+        builder: (context) {
+          final patient = context.watch<AuthProvider>().patient;
+
+          if (patient == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          return AIChatScreen(userId: patient.id);
+        },
+      ),
       const MedicationScreen(),
     ];
 

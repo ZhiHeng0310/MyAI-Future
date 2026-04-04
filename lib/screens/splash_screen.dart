@@ -1,72 +1,95 @@
+// lib/screens/splash_screen.dart
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import '../services/notification_service.dart';
 
-/// Pure display widget — shows the CareLoop branding while Firebase/Auth
-/// is initialising. All routing decisions are made by AuthWrapper in main.dart.
-class SplashScreen extends StatelessWidget {
-  const SplashScreen({super.key});
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({Key? key}) : super(key: key);
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    try {
+      // Initialize notification service
+      await NotificationService.init();
+
+      // Wait a bit for splash screen visibility
+      await Future.delayed(const Duration(seconds: 2));
+
+      // Navigate to home/login screen
+      if (mounted) {
+        _navigateToNextScreen();
+      }
+    } catch (e) {
+      debugPrint('Splash screen initialization error: $e');
+      // Still navigate even if notification init fails
+      if (mounted) {
+        _navigateToNextScreen();
+      }
+    }
+  }
+
+  void _navigateToNextScreen() {
+    // Replace with your actual navigation logic
+    // For example:
+    Navigator.pushReplacementNamed(context, '/home');
+
+    // Or if you check auth state:
+    // Navigator.pushReplacementNamed(context, isLoggedIn ? '/home' : '/login');
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1B2A),
+      backgroundColor: Colors.teal,
       body: Center(
         child: Column(
-          mainAxisAlignment: MFainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 88,
-              height: 88,
-              decoration: BoxDecoration(
-                color: const Color(0xFF00C896),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF00C896).withOpacity(0.4),
-                    blurRadius: 32,
-                    spreadRadius: 4,
-                  ),
-                ],
-              ),
-              child: const Icon(Icons.favorite_rounded,
-                  color: Colors.white, size: 44),
-            )
-                .animate()
-                .scale(duration: 600.ms, curve: Curves.elasticOut)
-                .then()
-                .shimmer(duration: 800.ms, color: Colors.white24),
-
+            // Your app logo
+            Icon(
+              Icons.medical_services,
+              size: 100,
+              color: Colors.white,
+            ),
             const SizedBox(height: 24),
 
-            Text(
+            // App name
+            const Text(
               'CareLoop',
-              style: GoogleFonts.poppins(
+              style: TextStyle(
                 fontSize: 36,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.bold,
                 color: Colors.white,
-                letterSpacing: -0.5,
+                letterSpacing: 1.5,
               ),
-            ).animate(delay: 300.ms).fadeIn(duration: 500.ms).slideY(begin: 0.3),
+            ),
+            const SizedBox(height: 12),
 
-            const SizedBox(height: 8),
-
-            Text(
-              'Intelligent Care, Continuously',
-              style: GoogleFonts.dmSans(
-                  fontSize: 14, color: Colors.white54, letterSpacing: 0.3),
-            ).animate(delay: 500.ms).fadeIn(duration: 500.ms),
-
-            const SizedBox(height: 60),
-
-            SizedBox(
-              width: 32,
-              height: 32,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: const Color(0xFF00C896).withOpacity(0.6),
+            // Tagline
+            const Text(
+              'Your Health Companion',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.white70,
+                letterSpacing: 0.5,
               ),
-            ).animate(delay: 800.ms).fadeIn(),
+            ),
+            const SizedBox(height: 48),
+
+            // Loading indicator
+            const CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
           ],
         ),
       ),
