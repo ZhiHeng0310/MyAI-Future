@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/firestore_service.dart';
 import '../../widgets/risk_badge.dart';
 import '../appointment/appointment_booking_screen.dart';
+import '../../services/enhanced_ai_chat_service.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});

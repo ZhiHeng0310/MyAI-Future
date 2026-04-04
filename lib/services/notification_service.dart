@@ -4,8 +4,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 // flutter_local_notifications is mobile/desktop only — guard with !kIsWeb
-import 'package:flutter_local_notifications/flutter_local_notifications.dart'
-if (dart.library.html) 'notification_service_web_stub.dart';
+import 'notification_service_web_stub.dart'
+  if (dart.library.io) 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz_data;
 

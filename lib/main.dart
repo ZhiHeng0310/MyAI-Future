@@ -1,3 +1,7 @@
+import 'package:careloop/screens/inbox_screen.dart';
+import 'package:careloop/services/medication_reminder_service.dart';
+import 'package:careloop/widgets/notification_popup.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
@@ -6,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'firebase_options.dart';
+import 'models/notification_model.dart';
 import 'providers/auth_provider.dart';
 import 'providers/queue_provider.dart';
 import 'providers/medication_provider.dart';
@@ -17,6 +22,8 @@ import 'screens/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/doctor/doctor_home_screen.dart';
+import 'services/inbox_service.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,12 +55,20 @@ class CareLoopApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => AppointmentProvider()),
         ChangeNotifierProvider(create: (_) => DoctorChatProvider()),
+        ChangeNotifierProvider(create: (_) => InboxService.instance),
       ],
       child: MaterialApp(
         title: 'CareLoop',
         debugShowCheckedModeBanner: false,
-        theme: _theme(),
-        home: const AuthWrapper(),
+        theme: ThemeData(
+          primarySwatch: Colors.teal,
+          useMaterial3: true,
+        ),
+        routes: {
+          '/': (context) => const HomeScreen(),
+          '/inbox': (context) => const InboxScreen(),
+        },
+        home: const NotificationWrapper(),
       ),
     );
   }
@@ -99,6 +114,65 @@ class CareLoopApp extends StatelessWidget {
         const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
     );
+  }
+}
+
+class NotificationWrapper extends StatefulWidget {
+  const NotificationWrapper({Key? key}) : super(key: key);
+
+  @override
+  State<NotificationWrapper> createState() => _NotificationWrapperState();
+}
+
+class _NotificationWrapperState extends State<NotificationWrapper> {
+  @override
+  void initState() {
+    super.initState();
+    _setupNotificationListener();
+  }
+
+  void _setupNotificationListener() {
+    // Listen to Firestore notifications for this user
+    // You'll need to get the current user ID
+    final userId = getCurrentUserId(); // Implement this based on your auth
+
+    if (userId != null) {
+      // Start inbox service
+      InboxService.instance.startListening(userId);
+
+      // Start medication monitoring
+      MedicationReminderService.instance.startMonitoring(userId);
+
+      // Listen for new notifications and show popup
+      FirebaseFirestore.instance
+          .collection('notifications')
+          .where('userId', isEqualTo: userId)
+          .orderBy('timestamp', descending: true)
+          .limit(1)
+          .snapshots()
+          .listen((snapshot) {
+        if (snapshot.docs.isNotEmpty) {
+          final notification = NotificationModel.fromFirestore(
+            snapshot.docs.first,
+          );
+
+          // Show popup notification
+          NotificationPopup.show(context, notification);
+        }
+      });
+    }
+  }
+
+  String? getCurrentUserId() {
+    // Implement based on your authentication
+    // For example, using FirebaseAuth:
+    // return FirebaseAuth.instance.currentUser?.uid;
+    return null; // Replace with actual implementation
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const HomeScreen(); // Your home screen
   }
 }
 
