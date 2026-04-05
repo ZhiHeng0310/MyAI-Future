@@ -61,14 +61,11 @@ class CareLoopApp extends StatelessWidget {
       child: MaterialApp(
         title: 'CareLoop',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          primarySwatch: Colors.teal,
-          useMaterial3: true,
-        ),
+        theme: _theme(),
         routes: {
           '/inbox': (context) => const InboxScreen(),
         },
-        home: const NotificationWrapper(),
+        home: const AuthWrapper(),
       ),
     );
   }

@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/queue_provider.dart';
 import '../../providers/medication_provider.dart';
 import '../../widgets/stat_card.dart';
+import '../../widgets/upcoming_appointments_widget.dart';
 
 class DashboardTab extends StatelessWidget {
   const DashboardTab({super.key});
@@ -35,116 +36,98 @@ class DashboardTab extends StatelessWidget {
         ? 'All doses taken ✓'
         : '${(meds.adherenceRate * 100).round()}% doses taken';
 
-    return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          // ── App bar ──
-          SliverAppBar(
-            expandedHeight: 160,
-            floating: false, pinned: true,
-            backgroundColor: const Color(0xFF0D1B2A),
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF0D1B2A), Color(0xFF00473E)],
-                    begin: Alignment.topLeft, end: Alignment.bottomRight,
-                  ),
-                ),
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('${_greeting()},',
-                                style: GoogleFonts.dmSans(
-                                    color: Colors.white60, fontSize: 14)),
-                            GestureDetector(
-                              onTap: () => context.read<AuthProvider>().signOut(),
-                              child: const Icon(Icons.logout_rounded,
-                                  color: Colors.white60, size: 22),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(name,
-                            style: GoogleFonts.poppins(
-                                color: Colors.white, fontSize: 28,
-                                fontWeight: FontWeight.w700)),
-                        if (patient?.diagnosis != null)
-                          Text(patient!.diagnosis!,
-                              style: GoogleFonts.dmSans(
-                                  color: const Color(0xFF00C896),
-                                  fontSize: 13, fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                  ),
-                ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Welcome Header ──
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0D1B2A), Color(0xFF00473E)],
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
               ),
+              borderRadius: BorderRadius.circular(24),
             ),
-          ),
-
-          // ── Body ──
-          SliverPadding(
-            padding: const EdgeInsets.all(20),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-
-                // Stats row
-                Row(children: [
-                  Expanded(
-                    child: StatCard(
-                      icon:     Icons.queue_rounded,
-                      label:    'Queue Position',
-                      value:    queue.myEntry == null ? '—' : '#${queue.myPosition}',
-                      color:    const Color(0xFF6C63FF),
-                      sublabel: waitLabel,  // plain string, no function ref
-                    ).animate(delay: 100.ms).fadeIn().slideY(begin: 0.2),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: StatCard(
-                      icon:     Icons.medication_rounded,
-                      label:    'Doses Today',
-                      value:    medValue,   // e.g. "1/2" for twice-daily
-                      color:    const Color(0xFF00C896),
-                      sublabel: medSublabel,
-                    ).animate(delay: 150.ms).fadeIn().slideY(begin: 0.2),
-                  ),
-                ]),
-
-                const SizedBox(height: 16),
-
-                if (patient?.lastVisit != null)
-                  _RecoveryCard(daysSinceVisit: patient!.daysSinceVisit)
-                      .animate(delay: 200.ms).fadeIn().slideY(begin: 0.2),
-
-                const SizedBox(height: 16),
-
-                if (meds.medications.isNotEmpty) ...[
-                  Text("Today's Medications",
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontSize: 17, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 12),
-                  ...meds.medications.map((med) =>
-                      _MedTile(med: med,
-                          onLogSlot: (slot, taken) =>
-                              context.read<MedicationProvider>()
-                                  .logDoseForSlot(med.id, slot, taken),
-                          onLogSingle: (taken) =>
-                              context.read<MedicationProvider>()
-                                  .logDose(med.id, taken))
-                          .animate(delay: 250.ms).fadeIn()),
-                ],
-
-                const SizedBox(height: 80),
-              ]),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${_greeting()},',
+                    style: GoogleFonts.dmSans(
+                        color: Colors.white60, fontSize: 14)),
+                const SizedBox(height: 4),
+                Text(name,
+                    style: GoogleFonts.poppins(
+                        color: Colors.white, fontSize: 28,
+                        fontWeight: FontWeight.w700)),
+                if (patient?.diagnosis != null)
+                  Text(patient!.diagnosis!,
+                      style: GoogleFonts.dmSans(
+                          color: const Color(0xFF00C896),
+                          fontSize: 13, fontWeight: FontWeight.w500)),
+              ],
             ),
-          ),
+          ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.2),
+
+          const SizedBox(height: 20),
+
+          // ── Upcoming Appointments ──
+          if (patient != null)
+            UpcomingAppointmentsWidget(userId: patient.id),
+
+          const SizedBox(height: 20),
+
+          // Stats row
+          Row(children: [
+            Expanded(
+              child: StatCard(
+                icon:     Icons.queue_rounded,
+                label:    'Queue Position',
+                value:    queue.myEntry == null ? '—' : '#${queue.myPosition}',
+                color:    const Color(0xFF6C63FF),
+                sublabel: waitLabel,  // plain string, no function ref
+              ).animate(delay: 100.ms).fadeIn().slideY(begin: 0.2),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: StatCard(
+                icon:     Icons.medication_rounded,
+                label:    'Doses Today',
+                value:    medValue,   // e.g. "1/2" for twice-daily
+                color:    const Color(0xFF00C896),
+                sublabel: medSublabel,
+              ).animate(delay: 150.ms).fadeIn().slideY(begin: 0.2),
+            ),
+          ]),
+
+          const SizedBox(height: 16),
+
+          if (patient?.lastVisit != null)
+            _RecoveryCard(daysSinceVisit: patient!.daysSinceVisit)
+                .animate(delay: 200.ms).fadeIn().slideY(begin: 0.2),
+
+          const SizedBox(height: 16),
+
+          if (meds.medications.isNotEmpty) ...[
+            Text("Today's Medications",
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontSize: 17, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            ...meds.medications.map((med) =>
+                _MedTile(med: med,
+                    onLogSlot: (slot, taken) =>
+                        context.read<MedicationProvider>()
+                            .logDoseForSlot(med.id, slot, taken),
+                    onLogSingle: (taken) =>
+                        context.read<MedicationProvider>()
+                            .logDose(med.id, taken))
+                    .animate(delay: 250.ms).fadeIn()),
+          ],
+
+          const SizedBox(height: 80),
         ],
       ),
     );

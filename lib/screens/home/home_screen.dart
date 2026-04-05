@@ -13,7 +13,6 @@ import '../chat/chat_screen.dart';
 import '../medications/medication_screen.dart';
 
 import '../../widgets/inbox_icon.dart';
-import '../../widgets/upcoming_appointments_widget.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -78,20 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final patient = context.watch<AuthProvider>().patient;
 
     final screens = [
-      // 🔥 MODIFY ONLY THIS PART
-      SingleChildScrollView(
-        child: Column(
-          children: [
-            if (patient != null)
-              UpcomingAppointmentsWidget(userId: patient.id),
-
-            const SizedBox(height: 10),
-
-            const DashboardTab(),
-          ],
-        ),
-      ),
-
+      const DashboardTab(),
       const QueueScreen(),
       Builder(
         builder: (context) {
@@ -110,24 +96,20 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('CareLoop'),
+        backgroundColor: const Color(0xFF00C896),
+        foregroundColor: Colors.white,
         actions: [
-          // ✅ Inbox icon added safely
           const InboxIconAnimated(),
-
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () {
-              // TODO: your logout logic
-            },
+            onPressed: () => context.read<AuthProvider>().signOut(),
           ),
         ],
       ),
-
       body: IndexedStack(
         index: _currentIndex,
         children: screens,
       ),
-
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (i) => setState(() => _currentIndex = i),

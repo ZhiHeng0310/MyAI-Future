@@ -83,7 +83,7 @@ Remember: You're an assistant, not a replacement for real medical care.
       'chest pain', 'heart pain', 'bad headache',
 
       // Emergency words
-      'emergency', 'urgent', 'help me', 'serious', 'critical',
+      'emergency', 'urgent', 'serious', 'critical',
 
       // Medication not working
       'medicine not working', 'medication not working',
