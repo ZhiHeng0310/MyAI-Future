@@ -1,15 +1,14 @@
 // lib/services/gemini_ai_service.dart
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter/foundation.dart';
+import '../app_config.dart';
 
 class GeminiAIService {
   static final GeminiAIService _instance = GeminiAIService._();
   static GeminiAIService get instance => _instance;
   GeminiAIService._();
 
-  // Replace with your actual Gemini API key
-  // Get it from: https://makersuite.google.com/app/apikey
-  static const String _apiKey = 'AIzaSyAODsBaJ_Gs6WOCuj0AiK69lB2x4eCAjQc';
+  // API key loaded from app_config.dart (via env.json)
 
   late final GenerativeModel _model;
   bool _initialized = false;
@@ -20,8 +19,8 @@ class GeminiAIService {
 
     try {
       _model = GenerativeModel(
-        model: 'gemini-1.5-flash', // Fast, efficient model
-        apiKey: _apiKey,
+        model: 'gemini-1.5-flash-latest',
+        apiKey: AppConfig.geminiApiKey,
         generationConfig: GenerationConfig(
           temperature: 0.7,
           topK: 40,

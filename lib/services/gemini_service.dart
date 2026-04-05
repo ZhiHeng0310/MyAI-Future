@@ -10,10 +10,9 @@ enum GeminiRole { patient, doctor }
 /// Patient mode: health guidance, risk detection, queue booking, appointment booking.
 /// Doctor mode:  patient queries, status checks, send requests to patients.
 class GeminiService {
-  // ✅ FIX 1: Use gemini-1.5-flash (available in v1beta API)
-  static const _model   = 'gemini-1.5-flash';
-  static const _baseUrl =
-      'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent';
+  // ✅ FIX 1: Use gemini-1.5-flash-latest (available in v1beta API)
+  static const _model   = 'gemini-1.5-flash-latest';
+  static const _baseUrl = 'https://generativelanguage.googleapis.com/v1/models/$_model:generateContent';
 
   // ── Patient system prompt ─────────────────────────────────────────────────
   static const _patientSystem = r'''

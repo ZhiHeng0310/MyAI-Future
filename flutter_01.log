@@ -1,0 +1,95 @@
+Flutter crash report.
+Please report a bug at https://github.com/flutter/flutter/issues.
+
+## command
+
+flutter run --dart-define-from-file=env.json
+
+## exception
+
+FormatException: FormatException: Unexpected end of input (at character 1)
+
+^
+
+
+```
+#0      _ChunkedJsonParser.fail (dart:convert-patch/convert_patch.dart:1467:5)
+#1      _ChunkedJsonParser.close (dart:convert-patch/convert_patch.dart:497:7)
+#2      _JsonStringDecoderSink.close (dart:convert-patch/convert_patch.dart:1564:13)
+#3      _ConverterStreamEventSink.close (dart:convert/chunked_conversion.dart:79:18)
+#4      _SinkTransformerStreamSubscription._handleDone (dart:async/stream_transformers.dart:136:24)
+#5      _rootRun (dart:async/zone_root.dart:27:47)
+#6      _CustomZone.run (dart:async/zone.dart:726:19)
+#7      _CustomZone.runGuarded (dart:async/zone.dart:625:7)
+#8      _BufferingStreamSubscription._sendDone.sendDone (dart:async/stream_impl.dart:434:13)
+#9      _BufferingStreamSubscription._sendDone (dart:async/stream_impl.dart:444:7)
+#10     _BufferingStreamSubscription._close (dart:async/stream_impl.dart:333:7)
+#11     _SinkTransformerStreamSubscription._close (dart:async/stream_transformers.dart:91:11)
+#12     _EventSinkWrapper.close (dart:async/stream_transformers.dart:21:11)
+#13     _StringAdapterSink.close (dart:convert/string_conversion.dart:241:11)
+#14     _Utf8ConversionSink.close (dart:convert/string_conversion.dart:301:20)
+#15     _ConverterStreamEventSink.close (dart:convert/chunked_conversion.dart:79:18)
+#16     _SinkTransformerStreamSubscription._handleDone (dart:async/stream_transformers.dart:136:24)
+#17     _rootRun (dart:async/zone_root.dart:27:47)
+#18     _CustomZone.run (dart:async/zone.dart:726:19)
+#19     _CustomZone.runGuarded (dart:async/zone.dart:625:7)
+#20     _BufferingStreamSubscription._sendDone.sendDone (dart:async/stream_impl.dart:434:13)
+#21     _BufferingStreamSubscription._sendDone (dart:async/stream_impl.dart:444:7)
+#22     _BufferingStreamSubscription._close (dart:async/stream_impl.dart:333:7)
+#23     _SyncStreamControllerDispatch._sendDone (dart:async/stream_controller.dart:806:19)
+#24     _StreamController._closeUnchecked (dart:async/stream_controller.dart:652:7)
+#25     _StreamController.close (dart:async/stream_controller.dart:645:5)
+#26     _Socket._onData (dart:io-patch/socket_patch.dart:2881:21)
+#27     _rootRunUnary (dart:async/zone_root.dart:56:13)
+#28     _CustomZone.runUnary (dart:async/zone.dart:733:19)
+#29     _CustomZone.runUnaryGuarded (dart:async/zone.dart:633:7)
+#30     _BufferingStreamSubscription._sendData (dart:async/stream_impl.dart:381:11)
+#31     _BufferingStreamSubscription._add (dart:async/stream_impl.dart:312:7)
+#32     _SyncStreamControllerDispatch._sendData (dart:async/stream_controller.dart:798:19)
+#33     _StreamController._add (dart:async/stream_controller.dart:663:7)
+#34     _StreamController.add (dart:async/stream_controller.dart:618:5)
+#35     new _RawSocket.<anonymous closure> (dart:io-patch/socket_patch.dart:2319:33)
+#36     _NativeSocket.issueReadEvent.issue (dart:io-patch/socket_patch.dart:1640:18)
+#37     _microtaskLoop (dart:async/schedule_microtask.dart:40:35)
+#38     _startMicrotaskLoop (dart:async/schedule_microtask.dart:49:5)
+#39     _runPendingImmediateCallback (dart:isolate-patch/isolate_patch.dart:127:13)
+#40     _RawReceivePort._handleMessage (dart:isolate-patch/isolate_patch.dart:194:5)
+```
+
+## flutter doctor
+
+```
+[32m[✓][39m Flutter (Channel stable, 3.41.6, on Microsoft Windows [Version 10.0.26100.8117], locale en-ID) [241ms]
+    [32m•[39m Flutter version 3.41.6 on channel stable at C:\flutter
+    [32m•[39m Upstream repository https://github.com/flutter/flutter.git
+    [32m•[39m Framework revision db50e20168 (11 days ago), 2026-03-25 16:21:00 -0700
+    [32m•[39m Engine revision 425cfb54d0
+    [32m•[39m Dart version 3.11.4
+    [32m•[39m DevTools version 2.54.2
+    [32m•[39m Feature flags: enable-web, enable-linux-desktop, enable-macos-desktop, no-enable-windows-desktop, enable-android, enable-ios, cli-animations, enable-native-assets,
+      omit-legacy-version-file, enable-lldb-debugging, enable-uiscene-migration
+
+[32m[✓][39m Windows Version (11 Home Single Language 64-bit, 24H2, 2009) [1,678ms]
+
+[32m[✓][39m Android toolchain - develop for Android devices (Android SDK version 36.1.0) [2.5s]
+    [32m•[39m Android SDK at C:\Users\User\AppData\Local\Android\sdk
+    [32m•[39m Emulator version 36.4.9.0 (build_id 14788078) (CL:N/A)
+    [32m•[39m Platform android-36, build-tools 36.1.0
+    [32m•[39m Java binary at: C:\Java\jdk-17.0.18.8-hotspot\bin\java
+      This JDK is specified in your Flutter configuration.
+      To change the current JDK, run: `flutter config --jdk-dir="path/to/jdk"`.
+    [32m•[39m Java version OpenJDK Runtime Environment Temurin-17.0.18+8 (build 17.0.18+8)
+    [32m•[39m All Android licenses accepted.
+
+[32m[✓][39m Chrome - develop for the web [8ms]
+    [32m•[39m Chrome at C:\Program Files\Google\Chrome\Application\chrome.exe
+
+[32m[✓][39m Connected device (2 available) [233ms]
+    [32m•[39m Chrome (web) • chrome • web-javascript • Google Chrome 146.0.7680.178
+    [32m•[39m Edge (web)   • edge   • web-javascript • Microsoft Edge 146.0.3856.97
+
+[32m[✓][39m Network resources [495ms]
+    [32m•[39m All expected network resources are available.
+
+[32m•[39m No issues found!
+```
