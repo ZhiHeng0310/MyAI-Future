@@ -20,7 +20,7 @@ class GeminiAIService {
 
     try {
       _model = GenerativeModel(
-        model: 'gemini-1.5-flash-latest', // Fast, efficient model
+        model: 'gemini-1.5-flash', // Fast, efficient model
         apiKey: _apiKey,
         generationConfig: GenerationConfig(
           temperature: 0.7,

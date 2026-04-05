@@ -240,18 +240,16 @@ Remember: You're an assistant, not a replacement for real medical care.
 
       // Notify doctor
       await _firestore
-          .collection('notifications')
+          .collection('doctor_inbox')
+          .doc(assignedDoctorId)
+          .collection('messages')
           .add({
-        'userId': assignedDoctorId,
         'title': '🚨 Urgent: Patient Needs Attention',
         'message': '${patientData['name']} reports: "$message"',
-        'type': 'urgent_patient',
+        'patientId': userId,
+        'patientName': patientData['name'],
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
-        'metadata': {
-          'patientId': userId,
-          'patientName': patientData['name'],
-        },
       });
 
       return '🚨 **Urgent Message Sent to Dr. $doctorName**\n\n'

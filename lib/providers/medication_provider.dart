@@ -4,6 +4,7 @@ import '../models/medication_model.dart';
 import '../models/patient_model.dart';
 import '../services/firestore_service.dart';
 import '../services/notification_service.dart';
+import '../services/inbox_service.dart';
 
 class MedicationProvider extends ChangeNotifier {
   final _db = FirestoreService();
@@ -49,7 +50,7 @@ class MedicationProvider extends ChangeNotifier {
     _patient = patient;
   }
 
-  // ── Agentic checker ───────────────────────────────────────────────────────
+  // ✅ FIX 3: Enhanced agentic checker with COMPREHENSIVE notifications
   void _checkMissedDoses() {
     final now        = DateTime.now();
     final todayStr   = Medication.slotKey('marker').split('_').first;
@@ -70,12 +71,26 @@ class MedicationProvider extends ChangeNotifier {
             !med.isTakenForSlot(timeStr) &&
             !_notifiedSlots.contains(notifKey)) {
           _notifiedSlots.add(notifKey);
-          debugPrint('AgentTimer: missed dose "${med.name}" at $timeStr — notifying');
+          debugPrint('🔔 AgentTimer: missed dose "${med.name}" at $timeStr — notifying');
 
-          // Show local notification immediately
+          // ✅ FIX 3: Send THREE types of notifications for missed medication
+
+          // 1. Local OS notification (immediate, works even if app closed)
           NotificationService.showMedicationReminder(med.name, med.dosage);
+          debugPrint('✅ Sent local notification for ${med.name}');
 
-          // Also send push notification (for background/terminated app)
+          // 2. Inbox notification (persistent in-app notification)
+          if (_patient != null) {
+            InboxService.sendMedicationReminder(
+              userId:         _patient!.id,
+              medicationName: med.name,
+              dosage:         med.dosage,
+              medicationId:   med.id,
+            );
+            debugPrint('✅ Sent inbox notification for ${med.name}');
+          }
+
+          // 3. Push notification (Firebase Cloud Messaging - works background/terminated)
           if (_patient != null) {
             NotificationService.sendPushToUser(
               userId:         _patient!.id,
@@ -84,6 +99,7 @@ class MedicationProvider extends ChangeNotifier {
               body:           'Time to take ${med.name} (${med.dosage}). You\'re 5 minutes late!',
               channel:        'careloop_meds',
             );
+            debugPrint('✅ Sent push notification for ${med.name}');
           }
         }
       }

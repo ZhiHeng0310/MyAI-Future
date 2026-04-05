@@ -4,6 +4,7 @@ import '../models/patient_model.dart';
 import '../models/doctor_model.dart';
 import '../services/firestore_service.dart';
 import '../services/notification_service.dart';
+import '../services/inbox_service.dart';
 
 class AppointmentProvider extends ChangeNotifier {
   final _db = FirestoreService();
@@ -48,12 +49,38 @@ class AppointmentProvider extends ChangeNotifier {
       );
 
       if (appt != null) {
-        // Success — send notifications
+        // ✅ FIX 3: Success — send MULTIPLE types of notifications
+
+        // 1. Local OS notification (immediate)
         await NotificationService.showQueueStatusNotification(
           title: '✅ Appointment confirmed',
           body:  'Your appointment with Dr. ${doctor.name} '
               'on ${appt.dateLabel} at $timeSlot is confirmed.',
         );
+
+        debugPrint('✅ Sent local notification for appointment');
+
+        // 2. Notification inbox entry (persistent in app)
+        await InboxService.sendAppointmentNotification(
+          userId:          patient.id,
+          doctorName:      doctor.name,
+          appointmentTime: appt.date,
+          appointmentId:   appt.id,
+        );
+
+        debugPrint('✅ Sent inbox notification for appointment');
+
+        // 3. Push notification (works when app is closed/background)
+        await NotificationService.sendPushToUser(
+          userId:         patient.id,
+          userCollection: 'patients',
+          title:          '✅ Appointment Confirmed',
+          body:           'Dr. ${doctor.name} on ${appt.dateLabel} at $timeSlot',
+          channel:        'careloop_queue',
+        );
+
+        debugPrint('✅ Sent push notification for appointment');
+
         return BookingResult.success(appt);
       }
 
@@ -63,6 +90,7 @@ class AppointmentProvider extends ChangeNotifier {
 
       return BookingResult.slotTaken(alternatives);
     } catch (e) {
+      debugPrint('❌ Booking error: $e');
       _error = 'Booking failed: $e';
       return BookingResult.error(_error!);
     } finally {

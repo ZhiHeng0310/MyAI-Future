@@ -5,6 +5,7 @@ import '../models/patient_model.dart';
 import '../services/gemini_service.dart' hide FirestoreService;
 import '../services/firestore_service.dart';
 import '../services/notification_service.dart';
+import '../services/inbox_service.dart';
 
 class DoctorChatMessage {
   final String text;
@@ -45,24 +46,34 @@ class DoctorChatProvider extends ChangeNotifier {
         .map((p) => '${p.name} (Dx: ${p.diagnosis ?? "N/A"})')
         .toList();
 
-    await _gemini.initSession(
-      name:             doctor.name,
-      diagnosis:        '',
-      daysSinceVisit:   0,
-      medications:      [],
-      doctorId:         doctor.id,
-      patientSummaries: summaries,
-    );
+    try {
+      await _gemini.initSession(
+        name:             doctor.name,
+        diagnosis:        '',
+        daysSinceVisit:   0,
+        medications:      [],
+        doctorId:         doctor.id,
+        patientSummaries: summaries,
+      );
 
-    _sessionReady = true;
-    _messages.add(DoctorChatMessage(
-      text: 'Hello Dr. ${doctor.name.split(' ').last}! 👋 I\'m your CareLoop AI assistant. '
-          'I can help you check on patients, send them messages, or request appointments.\n\n'
-          'You currently have ${_patients.length} assigned patient(s). '
-          'You can also send me medical images or reports for clinical analysis. '
-          'How can I help you today?',
-      isDoctor: false,
-    ));
+      _sessionReady = true;
+      _messages.add(DoctorChatMessage(
+        text: 'Hello Dr. ${doctor.name.split(' ').last}! 👋 I\'m your CareLoop AI assistant. '
+            'I can help you check on patients, send them messages, or request appointments.\n\n'
+            'You currently have ${_patients.length} assigned patient(s). '
+            'You can also send me medical images or reports for clinical analysis. '
+            'How can I help you today?',
+        isDoctor: false,
+      ));
+    } catch (e) {
+      // ✅ FIX 2: Better error handling for initialization
+      _sessionReady = false;
+      _messages.add(DoctorChatMessage(
+        text: '❌ Failed to initialize AI assistant: $e\n\n'
+            'Please check your Gemini API key in app_config.dart',
+        isDoctor: false,
+      ));
+    }
     notifyListeners();
   }
 
@@ -111,13 +122,25 @@ class DoctorChatProvider extends ChangeNotifier {
   Future<void> _processResponse(GeminiResponse response, String query) async {
     String displayMsg = response.message;
 
+    // ✅ FIX 2: Show error messages clearly
+    if (response.isError) {
+      _messages.add(DoctorChatMessage(
+        text:     displayMsg,
+        isDoctor: false,
+        action:   'error',
+      ));
+      _thinking = false;
+      notifyListeners();
+      return;
+    }
+
     // ── Agentic: check patient status ─────────────────────────────────────
     if (response.actions.contains('check_patient_status')) {
       displayMsg = await _handleCheckPatient(
           response.patientId, query);
     }
 
-    // ── Agentic: send appointment request to patient ───────────────────────
+    // ✅ FIX 3: Agentic: send appointment request to patient with NOTIFICATION
     if (response.actions.contains('send_appointment_request') &&
         response.sendToPatient != null) {
       await _handleSendToPatient(
@@ -128,7 +151,7 @@ class DoctorChatProvider extends ChangeNotifier {
       displayMsg = '$displayMsg\n\n✅ Appointment request sent to patient.';
     }
 
-    // ── Agentic: send message to patient ──────────────────────────────────
+    // ✅ FIX 3: Agentic: send message to patient with NOTIFICATION
     if (response.actions.contains('send_patient_message') &&
         response.sendToPatient != null) {
       await _handleSendToPatient(
@@ -191,13 +214,16 @@ class DoctorChatProvider extends ChangeNotifier {
         'Would you like to send them a message or request an appointment?';
   }
 
-  // ── Send message/request to patient ──────────────────────────────────────
+  // ✅ FIX 3: Enhanced patient notification with inbox + push notifications
   Future<void> _handleSendToPatient(
       String?     patientIdHint,
       String      message,
       String      type,
       ) async {
-    if (_doctor == null) return;
+    if (_doctor == null) {
+      debugPrint('❌ No doctor context for sending message');
+      return;
+    }
 
     PatientModel? target;
     if (patientIdHint != null) {
@@ -205,26 +231,51 @@ class DoctorChatProvider extends ChangeNotifier {
         target = _patients.firstWhere(
                 (p) => p.id == patientIdHint ||
                 p.name.toLowerCase().contains(patientIdHint.toLowerCase()));
-      } catch (_) {}
+      } catch (_) {
+        debugPrint('❌ Patient not found: $patientIdHint');
+      }
     }
     target ??= _patients.isNotEmpty ? _patients.first : null;
-    if (target == null) return;
 
-    await _db.createPatientInboxMessage(
-      patientId: target.id,
-      message:   '📩 Message from Dr. ${_doctor!.name}: $message',
-      type:      type,
-      doctorId:  _doctor!.id,
-    );
+    if (target == null) {
+      debugPrint('❌ No target patient found');
+      return;
+    }
 
-    // Send push notification to patient
-    await NotificationService.sendPushToUser(
-      userId:         target.id,
-      userCollection: 'patients',
-      title:          '📩 Dr. ${_doctor!.name}',
-      body:           message,
-      channel:        'careloop_queue',
-    );
+    try {
+      // 1. Create inbox message in Firestore
+      await _db.createPatientInboxMessage(
+        patientId: target.id,
+        message:   '📩 Message from Dr. ${_doctor!.name}: $message',
+        type:      type,
+        doctorId:  _doctor!.id,
+      );
+
+      debugPrint('✅ Created patient inbox message');
+
+      // ✅ FIX 3: Send notification to patient's notification inbox
+      await InboxService.sendDoctorMessage(
+        userId:     target.id,
+        doctorName: _doctor!.name,
+        message:    message,
+      );
+
+      debugPrint('✅ Sent notification to patient ${target.name}');
+
+      // ✅ FIX 3: Also send push notification (works on mobile)
+      await NotificationService.sendPushToUser(
+        userId:         target.id,
+        userCollection: 'patients',
+        title:          '👨‍⚕️ Dr. ${_doctor!.name}',
+        body:           message,
+        channel:        'careloop_queue',
+      );
+
+      debugPrint('✅ Sent push notification to patient ${target.name}');
+
+    } catch (e) {
+      debugPrint('❌ Error sending message to patient: $e');
+    }
   }
 
   void clear() {
