@@ -10,6 +10,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'app_config.dart';
 import 'firebase_options.dart';
 import 'models/notification_model.dart';
 import 'providers/auth_provider.dart';
@@ -24,6 +25,7 @@ import 'screens/auth/login_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/doctor/doctor_home_screen.dart';
 import 'services/inbox_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 
 void main() async {
@@ -39,6 +41,8 @@ void main() async {
 
   // ── Init notifications ──────────────────────────────────────────
   await NotificationService.init();
+  await dotenv.load(fileName: "assets/env.json");
+  await AppConfig.load();
 
   runApp(const CareLoopApp());
 }

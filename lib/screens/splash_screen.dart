@@ -1,6 +1,7 @@
 // lib/screens/splash_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import '../main.dart';
 import '../services/notification_service.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -41,7 +42,10 @@ class _SplashScreenState extends State<SplashScreen> {
   void _navigateToNextScreen() {
     // Replace with your actual navigation logic
     // For example:
-    Navigator.pushReplacementNamed(context, '/home');
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const AuthWrapper()),
+    );
 
     // Or if you check auth state:
     // Navigator.pushReplacementNamed(context, isLoggedIn ? '/home' : '/login');

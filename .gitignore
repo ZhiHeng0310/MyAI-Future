@@ -1,5 +1,5 @@
 # ── Secrets — NEVER commit these ────────────────────────────
-env.json
+assets/env.json
 *.env
 .env*
 
