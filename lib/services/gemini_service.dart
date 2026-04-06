@@ -10,8 +10,8 @@ enum GeminiRole { patient, doctor }
 /// Patient mode: health guidance, risk detection, queue booking, appointment booking.
 /// Doctor mode:  patient queries, status checks, send requests to patients.
 class GeminiService {
-  // ✅ FINAL FIX: Use gemini-1.5-flash (not -latest suffix) with v1beta
-  static const _model   = 'gemini-1.5-flash';
+  // ✅ FINAL FIX: Use gemini-2.5-flash (not -latest suffix)
+  static const _model   = 'gemini-2.5-flash';
   static const _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent';
 
   // ── Patient system prompt ─────────────────────────────────────────────────
@@ -121,7 +121,7 @@ BEHAVIOUR:
     if (_ready) return;
 
     if (!_hasValidKey) {
-      throw Exception('Invalid Gemini API key. Please check app_config.dart');
+      throw Exception('Invalid Gemini API key. Please check app_config.dart and ensure GEMINI_KEY is set in env.json');
     }
 
     String ctx;
@@ -134,6 +134,20 @@ BEHAVIOUR:
           'Meds: ${medications.isEmpty ? "none" : medications.join(", ")}. '
           'Acknowledge.';
     }
+
+    // Test API connection first with a simple call
+    try {
+      await _raw(
+        contents: [{'role': 'user', 'parts': [{'text': 'hello'}]}],
+        maxTokens: 10,
+      );
+    } catch (e) {
+      throw Exception('Gemini API connection failed: $e\n\nPlease check:\n'
+          '1. Your GEMINI_KEY in env.json is correct\n'
+          '2. The API key has Gemini API enabled in Google Cloud Console\n'
+          '3. You have internet connection');
+    }
+
     _history
       ..add({'role': 'user',  'parts': [{'text': ctx}]})
       ..add({'role': 'model', 'parts': [{'text': _ackJson}]});
@@ -201,7 +215,7 @@ BEHAVIOUR:
     if (!_hasValidKey) {
       return GeminiResponse(
         message: _role == GeminiRole.doctor
-            ? 'API key not configured. Please add your Gemini API key to app_config.dart'
+            ? 'API key not configured. Please add your Gemini API key to env.json and restart the app.'
             : 'Unable to connect to AI service. Please check your internet connection.',
         actions: [],
         rawText: '',
@@ -220,7 +234,7 @@ BEHAVIOUR:
       if (_role == GeminiRole.doctor) {
         return GeminiResponse(
           message: 'API error: ${e.msg}\n\nPlease check:\n'
-              '1. Your API key in app_config.dart is correct\n'
+              '1. Your GEMINI_KEY in env.json is correct\n'
               '2. The API key has Gemini API enabled\n'
               '3. You have internet connection',
           actions: [], rawText: '', role: _role, isError: true,
@@ -244,14 +258,14 @@ BEHAVIOUR:
     required List<Map<String, dynamic>> contents,
     int maxTokens = 350,
   }) async {
-    if (!_hasValidKey) throw _Err('No valid API key');
+    if (!_hasValidKey) throw _Err('No valid API key - check env.json');
 
     final uri  = Uri.parse('$_baseUrl?key=${AppConfig.geminiApiKey}');
 
-    // ✅ CRITICAL: Use proper v1beta format with systemInstruction
+    // ✅ CRITICAL FIX: system_instruction.parts MUST be an array
     final body = jsonEncode({
       'system_instruction': {
-        'parts': {'text': _systemPrompt}
+        'parts': [{'text': _systemPrompt}]  // ← Array format required by Gemini API
       },
       'contents': contents,
       'generationConfig': {
@@ -263,6 +277,7 @@ BEHAVIOUR:
 
     print('🔵 Gemini API Request to: $_baseUrl');
     print('🔵 Using model: $_model');
+    print('🔵 API Key starts with: ${AppConfig.geminiApiKey.substring(0, 10)}...');
 
     final res = await http
         .post(uri, headers: {'Content-Type': 'application/json'}, body: body)
@@ -278,10 +293,21 @@ BEHAVIOUR:
         final parts = (cands[0]['content'] as Map?)?['parts'] as List?;
         return (parts?.first?['text'] ?? '') as String;
       case 429: throw _Quota();
-      case 403: throw _Err('Gemini 403 — API key invalid or API not enabled');
+      case 403: throw _Err('Gemini 403 — API key invalid or API not enabled in Google Cloud Console');
       case 404:
         print('❌ 404 Error - Model: $_model, Endpoint: $_baseUrl');
         throw _Err('Gemini 404 — Model "$_model" not found. Check if model name is correct.');
+      case 400:
+        final errorBody = res.body;
+        print('❌ Gemini 400 Error Body: $errorBody');
+        // Parse error for more helpful message
+        try {
+          final errorJson = jsonDecode(errorBody);
+          final errorMsg = errorJson['error']?['message'] ?? errorBody;
+          throw _Err('Gemini API error: $errorMsg');
+        } catch (_) {
+          throw _Err('Gemini 400: $errorBody');
+        }
       default:
         final errorBody = res.body;
         print('❌ Gemini Error Body: $errorBody');
@@ -294,7 +320,7 @@ BEHAVIOUR:
     if (_role == GeminiRole.doctor) {
       return GeminiResponse(
         message: 'I\'m unable to connect to the AI service. '
-            'Please ensure your Gemini API key is configured correctly in app_config.dart.',
+            'Please ensure your Gemini API key is configured correctly in env.json.',
         actions: [], rawText: '', role: _role, isError: true,
       );
     }

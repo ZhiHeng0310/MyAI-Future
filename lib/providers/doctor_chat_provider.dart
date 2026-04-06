@@ -36,44 +36,80 @@ class DoctorChatProvider extends ChangeNotifier {
   bool                    get thinking      => _thinking;
   bool                    get sessionReady  => _sessionReady;
 
-  // ── Init ──────────────────────────────────────────────────────────────────
+  // ── Init with comprehensive error handling ────────────────────────────────
   Future<void> initSession(DoctorModel doctor) async {
     if (_sessionReady) return;
     _doctor = doctor;
 
-    _patients = await _db.getPatientsForDoctor(doctor.id);
-    final summaries = _patients
-        .map((p) => '${p.name} (Dx: ${p.diagnosis ?? "N/A"})')
-        .toList();
-
     try {
-      await _gemini.initSession(
-        name:             doctor.name,
-        diagnosis:        '',
-        daysSinceVisit:   0,
-        medications:      [],
-        doctorId:         doctor.id,
-        patientSummaries: summaries,
-      );
+      _patients = await _db.getPatientsForDoctor(doctor.id);
+      final summaries = _patients
+          .map((p) => '${p.name} (Dx: ${p.diagnosis ?? "N/A"})')
+          .toList();
 
-      _sessionReady = true;
-      _messages.add(DoctorChatMessage(
-        text: 'Hello Dr. ${doctor.name.split(' ').last}! 👋 I\'m your CareLoop AI assistant. '
-            'I can help you check on patients, send them messages, or request appointments.\n\n'
-            'You currently have ${_patients.length} assigned patient(s). '
-            'You can also send me medical images or reports for clinical analysis. '
-            'How can I help you today?',
-        isDoctor: false,
-      ));
+      debugPrint('🔵 Doctor AI: Initializing session for Dr. ${doctor.name}');
+
+      // ✅ FIX: Try to initialize Gemini, but don't block UI if it fails
+      try {
+        await _gemini.initSession(
+          name:             doctor.name,
+          diagnosis:        '',
+          daysSinceVisit:   0,
+          medications:      [],
+          doctorId:         doctor.id,
+          patientSummaries: summaries,
+        );
+
+        // Success - show welcome message
+        _sessionReady = true;
+        _messages.add(DoctorChatMessage(
+          text: 'Hello Dr. ${doctor.name.split(' ').last}! 👋 I\'m your CareLoop AI assistant. '
+              'I can help you check on patients, send them messages, or request appointments.\n\n'
+              'You currently have ${_patients.length} assigned patient(s). '
+              'You can also send me medical images or reports for clinical analysis. '
+              'How can I help you today?',
+          isDoctor: false,
+        ));
+
+        debugPrint('✅ Doctor AI: Session initialized successfully');
+
+      } catch (e) {
+        // ✅ FIX: Show error message but mark session as "ready" so UI isn't stuck
+        debugPrint('❌ Doctor AI: Gemini initialization failed: $e');
+
+        _sessionReady = true;  // ← Allow UI to proceed even if AI fails
+        _messages.add(DoctorChatMessage(
+          text: '⚠️ **AI Connection Issue**\n\n'
+              'I\'m having trouble connecting to the AI service.\n\n'
+              '**Possible causes:**\n'
+              '• Your Gemini API key may not be configured\n'
+              '• The API key may be invalid or expired\n'
+              '• Gemini API may not be enabled in Google Cloud Console\n'
+              '• No internet connection\n\n'
+              '**To fix:**\n'
+              '1. Open `env.json` in your project root\n'
+              '2. Add your Gemini API key: `"GEMINI_KEY": "AIza..."`\n'
+              '3. Get a key from: https://aistudio.google.com/app/apikey\n'
+              '4. Restart the app\n\n'
+              'Error details: ${e.toString().length > 200 ? e.toString().substring(0, 200) + "..." : e.toString()}',
+          isDoctor: false,
+        ));
+      }
+
     } catch (e) {
-      // ✅ FIX 2: Better error handling for initialization
-      _sessionReady = false;
+      // ✅ FIX: Database or other errors - still mark as ready to prevent UI freeze
+      debugPrint('❌ Doctor AI: Failed to load patients: $e');
+
+      _sessionReady = true;  // ← Allow UI to proceed
       _messages.add(DoctorChatMessage(
-        text: '❌ Failed to initialize AI assistant: $e\n\n'
-            'Please check your Gemini API key in app_config.dart',
+        text: '⚠️ **Database Connection Issue**\n\n'
+            'I couldn\'t load your patient list.\n\n'
+            'Error: $e\n\n'
+            'Please check your Firebase connection and try again.',
         isDoctor: false,
       ));
     }
+
     notifyListeners();
   }
 
@@ -122,7 +158,7 @@ class DoctorChatProvider extends ChangeNotifier {
   Future<void> _processResponse(GeminiResponse response, String query) async {
     String displayMsg = response.message;
 
-    // ✅ FIX 2: Show error messages clearly
+    // ✅ FIX: Show error messages clearly
     if (response.isError) {
       _messages.add(DoctorChatMessage(
         text:     displayMsg,
@@ -140,7 +176,7 @@ class DoctorChatProvider extends ChangeNotifier {
           response.patientId, query);
     }
 
-    // ✅ FIX 3: Agentic: send appointment request to patient with NOTIFICATION
+    // ── Agentic: send appointment request to patient with NOTIFICATION ────
     if (response.actions.contains('send_appointment_request') &&
         response.sendToPatient != null) {
       await _handleSendToPatient(
@@ -151,7 +187,7 @@ class DoctorChatProvider extends ChangeNotifier {
       displayMsg = '$displayMsg\n\n✅ Appointment request sent to patient.';
     }
 
-    // ✅ FIX 3: Agentic: send message to patient with NOTIFICATION
+    // ── Agentic: send message to patient with NOTIFICATION ────────────────
     if (response.actions.contains('send_patient_message') &&
         response.sendToPatient != null) {
       await _handleSendToPatient(
@@ -214,7 +250,7 @@ class DoctorChatProvider extends ChangeNotifier {
         'Would you like to send them a message or request an appointment?';
   }
 
-  // ✅ FIX 3: Enhanced patient notification with inbox + push notifications
+  // ── Enhanced patient notification with inbox + push notifications ─────────
   Future<void> _handleSendToPatient(
       String?     patientIdHint,
       String      message,
@@ -253,7 +289,7 @@ class DoctorChatProvider extends ChangeNotifier {
 
       debugPrint('✅ Created patient inbox message');
 
-      // ✅ FIX 3: Send notification to patient's notification inbox
+      // 2. Send notification to patient's notification inbox
       await InboxService.sendDoctorMessage(
         userId:     target.id,
         doctorName: _doctor!.name,
@@ -262,7 +298,7 @@ class DoctorChatProvider extends ChangeNotifier {
 
       debugPrint('✅ Sent notification to patient ${target.name}');
 
-      // ✅ FIX 3: Also send push notification (works on mobile)
+      // 3. Also send push notification (works on mobile)
       await NotificationService.sendPushToUser(
         userId:         target.id,
         userCollection: 'patients',

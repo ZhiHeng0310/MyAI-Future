@@ -17,7 +17,7 @@ class AppConfig {
   // ─── Gemini ─────────────────────────────────────────────────────────────
   // Get your key from: https://aistudio.google.com/app/apikey
   static const String geminiApiKey =
-  String.fromEnvironment('GEMINI_KEY', defaultValue: '');
+  String.fromEnvironment('GEMINI_KEY', defaultValue: 'AIzaSyAZ0EycgzKhyYCcQUV-5K3pllHRUrSk2Ns');
 
   // ─── Clinic ──────────────────────────────────────────────────────────────
   static const String defaultClinicId =
