@@ -6,6 +6,7 @@ import '../../providers/queue_provider.dart';
 import '../../providers/medication_provider.dart';
 import '../../providers/chat_provider.dart';
 
+import '../../services/inbox_service.dart';
 import '../ai_chat_screen_gemini.dart';
 import 'dashboard_tab.dart';
 import '../queue/queue_screen.dart';
@@ -35,6 +36,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+
+        context.read<InboxService>().startListening(patient.id);
 
         final queueProv = context.read<QueueProvider>();
         final chatProv = context.read<ChatProvider>();

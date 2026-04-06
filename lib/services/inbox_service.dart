@@ -21,8 +21,10 @@ class InboxService extends ChangeNotifier {
 
   // Start listening to notifications for a user
   void startListening(String userId) {
-    if (_currentUserId == userId) return; // Already listening
+    if (_currentUserId == userId) return;
     _currentUserId = userId;
+
+    print('🔔 InboxService: Starting listener for user $userId'); // ← ADD THIS
 
     _firestore
         .collection('notifications')
@@ -31,12 +33,15 @@ class InboxService extends ChangeNotifier {
         .limit(100)
         .snapshots()
         .listen((snapshot) {
+      print('🔔 InboxService: Received ${snapshot.docs.length} notifications'); // ← ADD THIS
+
       _notifications = snapshot.docs
           .map((doc) => NotificationModel.fromFirestore(doc))
           .toList();
 
       _unreadCount = _notifications.where((n) => !n.isRead).length;
 
+      print('🔔 InboxService: Unread count = $_unreadCount'); // ← ADD THIS
       notifyListeners();
     });
   }

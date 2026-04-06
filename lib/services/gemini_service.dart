@@ -10,9 +10,9 @@ enum GeminiRole { patient, doctor }
 /// Patient mode: health guidance, risk detection, queue booking, appointment booking.
 /// Doctor mode:  patient queries, status checks, send requests to patients.
 class GeminiService {
-  // ✅ FIX 1: Use gemini-1.5-flash-latest (available in v1beta API)
-  static const _model   = 'gemini-1.5-flash-latest';
-  static const _baseUrl = 'https://generativelanguage.googleapis.com/v1/models/$_model:generateContent';
+  // ✅ FINAL FIX: Use gemini-1.5-flash (not -latest suffix) with v1beta
+  static const _model   = 'gemini-1.5-flash';
+  static const _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent';
 
   // ── Patient system prompt ─────────────────────────────────────────────────
   static const _patientSystem = r'''
@@ -120,7 +120,6 @@ BEHAVIOUR:
   }) async {
     if (_ready) return;
 
-    // ✅ FIX 1: Validate API key before initializing
     if (!_hasValidKey) {
       throw Exception('Invalid Gemini API key. Please check app_config.dart');
     }
@@ -174,7 +173,6 @@ BEHAVIOUR:
     ];
     _history.add({'role': 'user', 'parts': userParts});
 
-    // For image calls, pass history but with image only in the last message
     final contentsForApi = List<Map<String, dynamic>>.from(
         _history.sublist(0, _history.length - 1)
     );
@@ -201,7 +199,6 @@ BEHAVIOUR:
   Future<GeminiResponse> _call(
       List<Map<String, dynamic>> contents, {int max = 350}) async {
     if (!_hasValidKey) {
-      // ✅ FIX 1: Better error message for missing API key
       return GeminiResponse(
         message: _role == GeminiRole.doctor
             ? 'API key not configured. Please add your Gemini API key to app_config.dart'
@@ -219,7 +216,6 @@ BEHAVIOUR:
       return _fallback(_lastUser(contents));
     }
     on _Err catch (e) {
-      // ✅ FIX 1: Detailed error messages for debugging
       print('❌ Gemini API Error: ${e.msg}');
       if (_role == GeminiRole.doctor) {
         return GeminiResponse(
@@ -251,8 +247,12 @@ BEHAVIOUR:
     if (!_hasValidKey) throw _Err('No valid API key');
 
     final uri  = Uri.parse('$_baseUrl?key=${AppConfig.geminiApiKey}');
+
+    // ✅ CRITICAL: Use proper v1beta format with systemInstruction
     final body = jsonEncode({
-      'system_instruction': {'parts': [{'text': _systemPrompt}]},
+      'system_instruction': {
+        'parts': {'text': _systemPrompt}
+      },
       'contents': contents,
       'generationConfig': {
         'temperature': 0.4,
@@ -261,7 +261,6 @@ BEHAVIOUR:
       },
     });
 
-    // ✅ FIX 1: Add detailed logging for debugging
     print('🔵 Gemini API Request to: $_baseUrl');
     print('🔵 Using model: $_model');
 
@@ -280,7 +279,9 @@ BEHAVIOUR:
         return (parts?.first?['text'] ?? '') as String;
       case 429: throw _Quota();
       case 403: throw _Err('Gemini 403 — API key invalid or API not enabled');
-      case 404: throw _Err('Gemini 404 — model not found (using $_model)');
+      case 404:
+        print('❌ 404 Error - Model: $_model, Endpoint: $_baseUrl');
+        throw _Err('Gemini 404 — Model "$_model" not found. Check if model name is correct.');
       default:
         final errorBody = res.body;
         print('❌ Gemini Error Body: $errorBody');
