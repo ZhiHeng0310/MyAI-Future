@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../models/patient_model.dart';
 import '../../models/medication_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/firestore_service.dart';
 import '../../widgets/cl_button.dart' as clButton;
 import '../../widgets/cl_text_field.dart';
@@ -27,7 +29,7 @@ class _DoctorAddMedicationScreenState
     TextEditingController(text: '08:00')
   ];
 
-  bool _saving  = false;
+  bool _saving = false;
   String? _error;
 
   static const _frequencies = [
@@ -38,11 +40,11 @@ class _DoctorAddMedicationScreenState
     'As needed',
   ];
 
-  // Auto-populate reminder times when frequency changes
   void _onFrequencyChanged(String? val) {
     if (val == null) return;
     setState(() {
       _frequency = val;
+      for (final c in _timeCtrl) c.dispose();
       _timeCtrl.clear();
       switch (val) {
         case 'Twice daily':
@@ -78,10 +80,7 @@ class _DoctorAddMedicationScreenState
       return;
     }
 
-    setState(() {
-      _saving = true;
-      _error  = null;
-    });
+    setState(() { _saving = true; _error = null; });
 
     try {
       final reminderTimes = _frequency == 'As needed'
@@ -98,14 +97,14 @@ class _DoctorAddMedicationScreenState
         active:        true,
       );
 
-      await _db.addMedication(med);
+      // ✅ FIXED: pass doctorId from AuthProvider so patient gets assignedDoctorId set
+      final doctorId = context.read<AuthProvider>().doctor?.id;
+      await _db.addMedication(med, doctorId: doctorId);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              '${med.name} added for ${widget.patient.name}',
-            ),
+            content: Text('${med.name} added for ${widget.patient.name}'),
             backgroundColor: const Color(0xFF00C896),
           ),
         );
@@ -131,10 +130,8 @@ class _DoctorAddMedicationScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'Add Medication',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-        ),
+        title: Text('Add Medication',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -181,7 +178,6 @@ class _DoctorAddMedicationScreenState
 
             const SizedBox(height: 24),
 
-            // Medicine name
             clButton.ClTextField(
               controller: _nameCtrl,
               label:      'Medicine Name',
@@ -191,7 +187,6 @@ class _DoctorAddMedicationScreenState
 
             const SizedBox(height: 16),
 
-            // Dosage
             clButton.ClTextField(
               controller: _dosageCtrl,
               label:      'Dosage',
@@ -212,29 +207,27 @@ class _DoctorAddMedicationScreenState
                         color:      const Color(0xFF344054))),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
-                  value:       _frequency,
+                  value:      _frequency,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.schedule_rounded,
                         size: 20, color: Color(0xFF667085)),
                     filled:     true,
                     fillColor:  const Color(0xFFF2F4F7),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide:   BorderSide.none,
-                    ),
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:   BorderSide.none),
                     contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 14),
                   ),
                   items: _frequencies
-                      .map((f) => DropdownMenuItem(
-                      value: f, child: Text(f)))
+                      .map((f) => DropdownMenuItem(value: f, child: Text(f)))
                       .toList(),
                   onChanged: _onFrequencyChanged,
                 ),
               ],
             ),
 
-            // Reminder times (hidden for "As needed")
+            // Reminder times
             if (_frequency != 'As needed') ...[
               const SizedBox(height: 16),
               Text('Reminder Times',
@@ -242,7 +235,7 @@ class _DoctorAddMedicationScreenState
                       fontSize:   13,
                       fontWeight: FontWeight.w600,
                       color:      const Color(0xFF344054))),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Text(
                 'Patient will receive a notification at these times daily.',
                 style: GoogleFonts.dmSans(
@@ -251,22 +244,15 @@ class _DoctorAddMedicationScreenState
               const SizedBox(height: 10),
               ...List.generate(_timeCtrl.length, (i) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _TimePickerField(
-                        controller: _timeCtrl[i],
-                        label:      'Reminder ${i + 1}',
-                      ),
-                    ),
-                  ],
+                child: _TimePickerField(
+                  controller: _timeCtrl[i],
+                  label:      'Reminder ${i + 1}',
                 ),
               )),
             ],
 
             const SizedBox(height: 16),
 
-            // Notes
             clButton.ClTextField(
               controller: _notesCtrl,
               label:      'Notes for patient (optional)',
@@ -284,8 +270,8 @@ class _DoctorAddMedicationScreenState
                   border:       Border.all(color: Colors.red.shade200),
                 ),
                 child: Text(_error!,
-                    style:
-                    TextStyle(color: Colors.red.shade700, fontSize: 13)),
+                    style: TextStyle(
+                        color: Colors.red.shade700, fontSize: 13)),
               ),
             ],
 
@@ -303,13 +289,12 @@ class _DoctorAddMedicationScreenState
   }
 }
 
-// ─── Time picker field with clock dialog ─────────────────────────────────────
+// ─── Time picker field ────────────────────────────────────────────────────────
 
 class _TimePickerField extends StatefulWidget {
   final TextEditingController controller;
   final String                label;
-  const _TimePickerField(
-      {required this.controller, required this.label});
+  const _TimePickerField({required this.controller, required this.label});
 
   @override
   State<_TimePickerField> createState() => _TimePickerFieldState();
@@ -317,19 +302,17 @@ class _TimePickerField extends StatefulWidget {
 
 class _TimePickerFieldState extends State<_TimePickerField> {
   Future<void> _pick() async {
-    final parts = widget.controller.text.split(':');
+    final parts   = widget.controller.text.split(':');
     final initial = TimeOfDay(
       hour:   int.tryParse(parts[0]) ?? 8,
       minute: int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0,
     );
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: initial,
-    );
+    final picked = await showTimePicker(context: context, initialTime: initial);
     if (picked != null) {
       setState(() {
         widget.controller.text =
-        '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+        '${picked.hour.toString().padLeft(2, '0')}:'
+            '${picked.minute.toString().padLeft(2, '0')}';
       });
     }
   }

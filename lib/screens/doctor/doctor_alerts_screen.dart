@@ -5,6 +5,7 @@ import '../../models/appointment_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firestore_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/inbox_service.dart';
 
 class DoctorAlertsScreen extends StatelessWidget {
   const DoctorAlertsScreen({super.key});
@@ -26,16 +27,18 @@ class DoctorAlertsScreen extends StatelessWidget {
               Tab(text: 'Health Alerts'),
               Tab(text: 'Inbox'),
             ],
-            labelColor:         Color(0xFF6C63FF),
+            labelColor:           Color(0xFF6C63FF),
             unselectedLabelColor: Color(0xFF667085),
-            indicatorColor:     Color(0xFF6C63FF),
+            indicatorColor:       Color(0xFF6C63FF),
           ),
         ),
         body: TabBarView(
           children: [
-            // ── Health Alerts ──
-            _AlertsList(doctorId: doctor.id, db: db),
-            // ── Inbox ──
+            _AlertsList(
+              doctorId:   doctor.id,
+              doctorName: doctor.name,
+              db:         db,
+            ),
             _InboxList(doctorId: doctor.id, db: db),
           ],
         ),
@@ -48,8 +51,13 @@ class DoctorAlertsScreen extends StatelessWidget {
 
 class _AlertsList extends StatelessWidget {
   final String         doctorId;
+  final String         doctorName;
   final FirestoreService db;
-  const _AlertsList({required this.doctorId, required this.db});
+  const _AlertsList({
+    required this.doctorId,
+    required this.doctorName,
+    required this.db,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -74,8 +82,7 @@ class _AlertsList extends StatelessWidget {
                         fontSize: 18, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
                 Text('All patients are doing well.',
-                    style: GoogleFonts.dmSans(
-                        color: const Color(0xFF667085))),
+                    style: GoogleFonts.dmSans(color: const Color(0xFF667085))),
               ],
             ),
           );
@@ -84,22 +91,32 @@ class _AlertsList extends StatelessWidget {
           padding:     const EdgeInsets.all(16),
           itemCount:   alerts.length,
           itemBuilder: (_, i) => _AlertCard(
-              alert: alerts[i], db: db),
+            alert:      alerts[i],
+            doctorName: doctorName,
+            db:         db,
+          ),
         );
       },
     );
   }
 }
 
+// ─── Alert Card ───────────────────────────────────────────────────────────────
+
 class _AlertCard extends StatelessWidget {
   final HealthAlert      alert;
+  final String           doctorName;
   final FirestoreService db;
-  const _AlertCard({required this.alert, required this.db});
+  const _AlertCard({
+    required this.alert,
+    required this.doctorName,
+    required this.db,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isPending = alert.status == 'pending';
-    final riskColor = alert.riskLevel == 'high'
+    final isPending  = alert.status == 'pending';
+    final riskColor  = alert.riskLevel == 'high'
         ? Colors.red
         : alert.riskLevel == 'medium'
         ? Colors.orange
@@ -162,8 +179,7 @@ class _AlertCard extends StatelessWidget {
                         Text(
                           _timeAgo(alert.createdAt),
                           style: GoogleFonts.dmSans(
-                              fontSize: 11,
-                              color:    const Color(0xFF667085)),
+                              fontSize: 11, color: const Color(0xFF667085)),
                         ),
                       ],
                     ),
@@ -171,14 +187,14 @@ class _AlertCard extends StatelessWidget {
                 ),
               ),
               if (!isPending)
-                Icon(Icons.check_circle_rounded,
-                    color: const Color(0xFF00C896), size: 20),
+                const Icon(Icons.check_circle_rounded,
+                    color: Color(0xFF00C896), size: 20),
             ],
           ),
 
           const SizedBox(height: 10),
 
-          // Message
+          // Patient message
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -194,34 +210,78 @@ class _AlertCard extends StatelessWidget {
             ),
           ),
 
+          // Doctor's previous response (if any)
           if (alert.doctorResponse != null) ...[
             const SizedBox(height: 8),
-            Text('Your response: ${alert.doctorResponse}',
-                style: GoogleFonts.dmSans(
-                    fontSize: 12, color: const Color(0xFF667085))),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color:        const Color(0xFF6C63FF).withOpacity(0.06),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF6C63FF).withOpacity(0.2)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.reply_rounded,
+                      color: Color(0xFF6C63FF), size: 14),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Your response: ${alert.doctorResponse}',
+                      style: GoogleFonts.dmSans(
+                          fontSize: 12, color: const Color(0xFF344054)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
 
+          // Action buttons (only for pending alerts)
           if (isPending) ...[
             const SizedBox(height: 12),
             Wrap(
               spacing: 8, runSpacing: 8,
               children: [
                 _ResponseBtn(
-                  label: 'Recommend rest',
+                  label: '😴 Recommend rest',
                   color: const Color(0xFF00C896),
-                  onTap: () => _respond(context, alert,
-                      'Rest and stay hydrated. Monitor symptoms.'),
+                  onTap: () => _respond(
+                    context,
+                    alert,
+                    'Please rest and stay hydrated. Monitor your symptoms — '
+                        'if they worsen, come in immediately.',
+                  ),
                 ),
                 _ResponseBtn(
-                  label: 'Request appointment',
+                  label: '📅 Request appointment',
                   color: const Color(0xFF6C63FF),
-                  onTap: () => _respond(context, alert,
-                      'Please book an appointment at your earliest convenience.'),
+                  onTap: () => _respond(
+                    context,
+                    alert,
+                    'Please book an appointment at your earliest convenience '
+                        'so I can assess you properly.',
+                  ),
                 ),
                 _ResponseBtn(
-                  label: 'Acknowledge',
+                  label: '🚨 Go to A&E now',
+                  color: Colors.red,
+                  onTap: () => _respond(
+                    context,
+                    alert,
+                    'Based on your symptoms, please go to the emergency room '
+                        'or call 999 / 911 immediately. Do not wait.',
+                  ),
+                ),
+                _ResponseBtn(
+                  label: '✅ Acknowledge',
                   color: Colors.grey,
-                  onTap: () => _respond(context, alert, 'Acknowledged.'),
+                  onTap: () => _respond(
+                    context,
+                    alert,
+                    'I have noted your condition. Please continue monitoring '
+                        'and contact me if your symptoms change.',
+                  ),
                 ),
               ],
             ),
@@ -231,24 +291,48 @@ class _AlertCard extends StatelessWidget {
     );
   }
 
-  Future<void> _respond(BuildContext ctx, HealthAlert a, String response) async {
-    await db.respondToAlert(a.id, response, 'responded');
-    // Notify patient (simplified — in production use FCM)
-    await NotificationService.showQueueStatusNotification(
-      title: '👨‍⚕️ Response from your doctor',
-      body:  response,
+  /// ✅ FIXED: respond() now ALSO sends notification to the PATIENT
+  Future<void> _respond(
+      BuildContext ctx, HealthAlert a, String doctorResponse) async {
+    // 1. Update the alert in Firestore
+    await db.respondToAlert(a.id, doctorResponse, 'responded');
+
+    // 2. ✅ Send notification to PATIENT's inbox (visible in patient app)
+    await InboxService.sendDoctorMessage(
+      userId:     a.patientId,
+      doctorName: doctorName,
+      message:    doctorResponse,
     );
+
+    // 3. ✅ Send push notification to PATIENT
+    await NotificationService.sendPushToUser(
+      userId:         a.patientId,
+      userCollection: 'patients',
+      title:          '👨‍⚕️ Dr. $doctorName sent you advice',
+      body:           doctorResponse,
+      channel:        'careloop_queue',
+    );
+
+    // 4. Local notification for doctor confirmation
+    await NotificationService.showQueueStatusNotification(
+      title: '✅ Response sent to ${a.patientName}',
+      body:  doctorResponse,
+    );
+
     if (ctx.mounted) {
       ScaffoldMessenger.of(ctx).showSnackBar(
-          SnackBar(content: Text('Response sent to ${a.patientName}'),
-              backgroundColor: const Color(0xFF00C896)));
+        SnackBar(
+          content: Text('Response sent to ${a.patientName} ✅'),
+          backgroundColor: const Color(0xFF00C896),
+        ),
+      );
     }
   }
 
   String _timeAgo(DateTime dt) {
     final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 60)  return '${diff.inMinutes}m ago';
-    if (diff.inHours   < 24)  return '${diff.inHours}h ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours   < 24) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
   }
 }
@@ -257,8 +341,7 @@ class _ResponseBtn extends StatelessWidget {
   final String     label;
   final Color      color;
   final VoidCallback onTap;
-  const _ResponseBtn(
-      {required this.label, required this.color, required this.onTap});
+  const _ResponseBtn({required this.label, required this.color, required this.onTap});
 
   @override
   Widget build(BuildContext context) => GestureDetector(
@@ -318,7 +401,9 @@ class _InboxList extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color:        msg.read ? Colors.white : const Color(0xFF6C63FF).withOpacity(0.05),
+                color: msg.read
+                    ? Colors.white
+                    : const Color(0xFF6C63FF).withOpacity(0.05),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: msg.read
@@ -330,7 +415,8 @@ class _InboxList extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   CircleAvatar(
-                    backgroundColor: const Color(0xFF6C63FF).withOpacity(0.15),
+                    backgroundColor:
+                    const Color(0xFF6C63FF).withOpacity(0.15),
                     radius: 18,
                     child: Text(
                       msg.patientName.isNotEmpty
@@ -351,7 +437,8 @@ class _InboxList extends StatelessWidget {
                           children: [
                             Text(msg.patientName,
                                 style: GoogleFonts.dmSans(
-                                    fontWeight: FontWeight.w700, fontSize: 14)),
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14)),
                             if (!msg.read) ...[
                               const SizedBox(width: 6),
                               Container(

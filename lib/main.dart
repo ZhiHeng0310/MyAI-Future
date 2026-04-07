@@ -26,6 +26,8 @@ import 'screens/home/home_screen.dart';
 import 'screens/doctor/doctor_home_screen.dart';
 import 'services/inbox_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:careloop/screens/appointment/appointment_screen.dart';
+import 'package:careloop/screens/appointment/appointment_details_screen.dart';
 
 
 void main() async {
@@ -68,6 +70,17 @@ class CareLoopApp extends StatelessWidget {
         theme: _theme(),
         routes: {
           '/inbox': (context) => const InboxScreen(),
+        },
+        onGenerateRoute: (settings) {
+          if (settings.name == "/appointment-details") {
+            final appointmentId = settings.arguments as String;
+
+            return MaterialPageRoute(
+              builder: (context) =>
+                  AppointmentDetailsScreen(appointmentId: appointmentId),
+            );
+          }
+          return null;
         },
         home: const AuthWrapper(),
       ),

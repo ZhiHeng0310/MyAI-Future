@@ -20,7 +20,6 @@ class FirestoreService {
   Future<void> savePatient(PatientModel p) =>
       _db.collection('patients').doc(p.id).set(p.toMap());
 
-  /// Assigns a doctor to a patient (called when doctor adds first medication).
   Future<void> assignDoctor(String patientId, String doctorId) =>
       _db.collection('patients').doc(patientId)
           .update({'assignedDoctorId': doctorId});
@@ -52,7 +51,6 @@ class FirestoreService {
   Future<void> saveDoctor(DoctorModel d) =>
       _db.collection('doctors').doc(d.id).set(d.toMap());
 
-  /// Get all doctors (used when patient has no assigned doctor)
   Future<List<DoctorModel>> getAllDoctors() async {
     final snap = await _db.collection('doctors').limit(10).get();
     return snap.docs
@@ -89,12 +87,15 @@ class FirestoreService {
     required String       patientName,
     required List<String> symptoms,
   }) async {
-    final ref = _db.collection('queues').doc(clinicId)
-        .collection('entries').doc();
+    final ref   = _db.collection('queues').doc(clinicId).collection('entries').doc();
     final entry = QueueEntry(
-      id: ref.id, patientId: patientId, patientName: patientName,
-      symptoms: symptoms, priority: _calcPriority(symptoms),
-      status: QueueStatus.waiting, joinedAt: DateTime.now(),
+      id:          ref.id,
+      patientId:   patientId,
+      patientName: patientName,
+      symptoms:    symptoms,
+      priority:    _calcPriority(symptoms),
+      status:      QueueStatus.waiting,
+      joinedAt:    DateTime.now(),
     );
     await ref.set(entry.toMap());
     return entry;
@@ -103,21 +104,22 @@ class FirestoreService {
   Future<void> updateQueuePriority(
       String clinicId, String entryId, int priority) =>
       _db.collection('queues').doc(clinicId).collection('entries')
-          .doc(entryId).update(
-          {'priority': priority, 'updatedAt': FieldValue.serverTimestamp()});
+          .doc(entryId)
+          .update({'priority': priority, 'updatedAt': FieldValue.serverTimestamp()});
 
   Future<void> updateQueueStatus(
       String clinicId, String entryId, QueueStatus status) =>
       _db.collection('queues').doc(clinicId).collection('entries')
-          .doc(entryId).update({'status': status.name});
+          .doc(entryId)
+          .update({'status': status.name});
 
   Future<void> removeQueueEntry(String clinicId, String entryId) =>
-      _db.collection('queues').doc(clinicId)
-          .collection('entries').doc(entryId).delete();
+      _db.collection('queues').doc(clinicId).collection('entries')
+          .doc(entryId).delete();
 
   int _calcPriority(List<String> symptoms) {
-    const urgent = ['chest pain','shortness of breath',
-      'difficulty breathing','severe pain','unconscious'];
+    const urgent = ['chest pain', 'shortness of breath',
+      'difficulty breathing', 'severe pain', 'unconscious'];
     for (final s in symptoms) {
       if (urgent.any((u) => s.toLowerCase().contains(u))) return 10;
     }
@@ -142,8 +144,8 @@ class FirestoreService {
 
   Future<List<Map<String, dynamic>>> getAvailableSlots(
       String doctorId, DateTime from, int count) async {
-    final schedule = DoctorSchedule(doctorId: doctorId);
-    final results  = <Map<String, dynamic>>[];
+    final schedule  = DoctorSchedule(doctorId: doctorId);
+    final results   = <Map<String, dynamic>>[];
     var   checkDate = from;
 
     while (results.length < count) {
@@ -172,11 +174,10 @@ class FirestoreService {
     required List<String> symptoms,
   }) async {
     final dateStr = _dateKey(date);
-    final booked = await getBookedSlots(doctorId, date);
+    final booked  = await getBookedSlots(doctorId, date);
     if (booked.contains(timeSlot)) return null;
 
-    final ref  = _db.collection('appointments').doc(doctorId)
-        .collection('slots').doc();
+    final ref  = _db.collection('appointments').doc(doctorId).collection('slots').doc();
     final appt = AppointmentSlot(
       id:          ref.id,
       doctorId:    doctorId,
@@ -222,15 +223,15 @@ class FirestoreService {
           .toList());
 
   String _dateKey(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  // ─── Health alerts — FIXED: properly creates inbox for doctor ────────────
+  // ─── Health Alerts ────────────────────────────────────────────────────────
 
   Future<String> createHealthAlert(HealthAlert alert) async {
     final ref = _db.collection('health_alerts').doc();
     await ref.set(alert.toMap());
 
-    // Create doctor inbox message
+    // Also create doctor inbox message
     await createDoctorInboxMessage(DoctorInboxMessage(
       id:          '',
       doctorId:    alert.doctorId,
@@ -273,7 +274,7 @@ class FirestoreService {
     return snap.count ?? 0;
   }
 
-  // ─── Doctor inbox ─────────────────────────────────────────────────────────
+  // ─── Doctor Inbox ─────────────────────────────────────────────────────────
 
   Future<void> createDoctorInboxMessage(DoctorInboxMessage msg) async {
     final ref = _db.collection('doctor_inbox').doc(msg.doctorId)
@@ -295,7 +296,7 @@ class FirestoreService {
           .collection('messages').doc(messageId)
           .update({'read': true});
 
-  // ─── Patient inbox ────────────────────────────────────────────────────────
+  // ─── Patient Inbox ────────────────────────────────────────────────────────
 
   Future<void> createPatientInboxMessage({
     required String patientId,
@@ -319,9 +320,8 @@ class FirestoreService {
           .orderBy('createdAt', descending: true)
           .limit(20)
           .snapshots()
-          .map((s) => s.docs
-          .map((d) => {'id': d.id, ...d.data()})
-          .toList());
+          .map((s) =>
+          s.docs.map((d) => {'id': d.id, ...d.data()}).toList());
 
   // ─── Medications ──────────────────────────────────────────────────────────
 
@@ -333,6 +333,19 @@ class FirestoreService {
       .map((s) =>
       s.docs.map((d) => Medication.fromMap(d.data(), d.id)).toList());
 
+  /// ✅ One-time fetch of active medications (used by ChatProvider for AI context + med check)
+  Future<List<Medication>> getMedicationsForPatient(String patientId) async {
+    final snap = await _db
+        .collection('medications')
+        .where('patientId', isEqualTo: patientId)
+        .where('active', isEqualTo: true)
+        .get();
+    return snap.docs
+        .map((d) => Medication.fromMap(d.data(), d.id))
+        .toList();
+  }
+
+  /// ✅ FIXED: always set assignedDoctorId when doctorId is provided
   Future<String> addMedication(Medication med, {String? doctorId}) async {
     final ref = _db.collection('medications').doc();
     await ref.set(Medication(
@@ -345,12 +358,11 @@ class FirestoreService {
       active:        true,
     ).toMap());
 
-    if (doctorId != null) {
-      final patient = await getPatient(med.patientId);
-      if (patient != null && patient.assignedDoctorId == null) {
-        await assignDoctor(med.patientId, doctorId);
-      }
+    // ✅ Always assign doctor when doctorId is provided (not null-guarded)
+    if (doctorId != null && doctorId.isNotEmpty) {
+      await assignDoctor(med.patientId, doctorId);
     }
+
     return ref.id;
   }
 
@@ -405,8 +417,11 @@ class FirestoreService {
     String? clinicId,
   }) =>
       _db.collection('alerts').add({
-        'patientId': patientId, 'type': type, 'message': message,
-        'clinicId':  clinicId,  'resolved': false,
+        'patientId': patientId,
+        'type':      type,
+        'message':   message,
+        'clinicId':  clinicId,
+        'resolved':  false,
         'createdAt': FieldValue.serverTimestamp(),
       });
 }

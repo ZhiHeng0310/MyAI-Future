@@ -7,11 +7,13 @@ import '../../providers/medication_provider.dart';
 import '../../providers/chat_provider.dart';
 
 import '../../services/inbox_service.dart';
-import '../ai_chat_screen_gemini.dart';
+
+// ✅ Use the new agentic chat screen (NOT ai_chat_screen_gemini.dart)
+import '../chat/chat_screen.dart';
 import 'dashboard_tab.dart';
 import '../queue/queue_screen.dart';
-import '../chat/chat_screen.dart';
 import '../medications/medication_screen.dart';
+import '../appointment/appointment_screen.dart';
 
 import '../../widgets/inbox_icon.dart';
 
@@ -23,8 +25,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0;
-  bool _initialized = false;
+  int  _currentIndex = 0;
+  bool _initialized  = false;
 
   @override
   void didChangeDependencies() {
@@ -40,13 +42,14 @@ class _HomeScreenState extends State<HomeScreen> {
         context.read<InboxService>().startListening(patient.id);
 
         final queueProv = context.read<QueueProvider>();
-        final chatProv = context.read<ChatProvider>();
-        final medProv = context.read<MedicationProvider>();
+        final chatProv  = context.read<ChatProvider>();
+        final medProv   = context.read<MedicationProvider>();
 
         queueProv.startListening(patient.id);
         medProv.startListening(patient.id, patient: patient);
 
         chatProv.setQueueProvider(queueProv);
+        // initSession loads real meds + doctor from Firestore, then inits Gemini
         chatProv.initSession(patient);
       });
     }
@@ -54,46 +57,41 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const _navItems = [
     NavigationDestination(
-      icon: Icon(Icons.home_outlined),
+      icon:         Icon(Icons.home_outlined),
       selectedIcon: Icon(Icons.home_rounded),
-      label: 'Home',
+      label:        'Home',
     ),
     NavigationDestination(
-      icon: Icon(Icons.queue_outlined),
+      icon:         Icon(Icons.queue_outlined),
       selectedIcon: Icon(Icons.queue_rounded),
-      label: 'Queue',
+      label:        'Queue',
     ),
     NavigationDestination(
-      icon: Icon(Icons.chat_bubble_outline_rounded),
+      icon:         Icon(Icons.chat_bubble_outline_rounded),
       selectedIcon: Icon(Icons.chat_bubble_rounded),
-      label: 'AI Care',
+      label:        'AI Care',
     ),
     NavigationDestination(
-      icon: Icon(Icons.medication_outlined),
+      icon:         Icon(Icons.medication_outlined),
       selectedIcon: Icon(Icons.medication_rounded),
-      label: 'Meds',
+      label:        'Meds',
+    ),
+    NavigationDestination(
+      icon:         Icon(Icons.calendar_month_outlined),
+      selectedIcon: Icon(Icons.calendar_month_rounded),
+      label:        'Appointments',
     ),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final patient = context.watch<AuthProvider>().patient;
-
-    final screens = [
-      const DashboardTab(),
-      const QueueScreen(),
-      Builder(
-        builder: (context) {
-          final patient = context.watch<AuthProvider>().patient;
-
-          if (patient == null) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          return AIChatScreen(userId: patient.id);
-        },
-      ),
-      const MedicationScreen(),
+    // Use IndexedStack so screens maintain their state
+    const screens = [
+      DashboardTab(),
+      QueueScreen(),
+      ChatScreen(),        // ✅ New agentic screen (calendar, doctor alert, med check, scan)
+      MedicationScreen(),
+      AppointmentsScreen(),
     ];
 
     return Scaffold(
@@ -114,13 +112,13 @@ class _HomeScreenState extends State<HomeScreen> {
         children: screens,
       ),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
+        selectedIndex:         _currentIndex,
         onDestinationSelected: (i) => setState(() => _currentIndex = i),
-        destinations: _navItems,
-        backgroundColor: Colors.white,
-        indicatorColor: const Color(0xFF00C896).withOpacity(0.15),
-        shadowColor: Colors.black12,
-        elevation: 8,
+        destinations:          _navItems,
+        backgroundColor:       Colors.white,
+        indicatorColor:        const Color(0xFF00C896).withOpacity(0.15),
+        shadowColor:           Colors.black12,
+        elevation:             8,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       ),
     );

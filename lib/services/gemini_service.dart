@@ -6,102 +6,136 @@ import 'notification_service.dart';
 
 enum GeminiRole { patient, doctor }
 
-/// Role-based Gemini service.
-/// Patient mode: health guidance, risk detection, queue booking, appointment booking.
-/// Doctor mode:  patient queries, status checks, send requests to patients.
 class GeminiService {
-  // ✅ FINAL FIX: Use gemini-2.5-flash (not -latest suffix)
   static const _model   = 'gemini-2.5-flash';
-  static const _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent';
+  static const _baseUrl =
+      'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent';
 
-  // ── Patient system prompt ─────────────────────────────────────────────────
-  static const _patientSystem = r'''
-You are CareLoop AI, a friendly medical recovery assistant for PATIENTS.
+  // ── Build patient system prompt with real patient data ────────────────────
+  static String _buildPatientSystem({
+    required String       patientName,
+    required String       diagnosis,
+    required int          daysSinceVisit,
+    required List<String> medications,
+    String?               assignedDoctorName,
+  }) {
+    final medList = medications.isEmpty
+        ? 'No medications currently assigned.'
+        : medications.map((m) => '  - $m').join('\n');
+    final doctorLine = assignedDoctorName != null && assignedDoctorName.isNotEmpty
+        ? 'Assigned Doctor: Dr. $assignedDoctorName'
+        : 'Assigned Doctor: Not yet assigned (clinic will handle routing).';
 
-RESPONSE FORMAT — always reply in valid JSON only:
+    return '''
+You are CareLoop AI, a warm and knowledgeable medical recovery assistant for PATIENTS.
+
+=== PATIENT PROFILE (use this for personalised, accurate responses) ===
+Patient Name: $patientName
+Diagnosis / Condition: $diagnosis
+Days since last clinic visit: $daysSinceVisit
+Current Medications:
+$medList
+$doctorLine
+
+=== RESPONSE FORMAT ===
+ALWAYS reply in valid JSON only — no markdown, no text outside the JSON object.
 {
-  "message": "<reply ≤100 words, warm and conversational>",
+  "message": "<reply ≤120 words, warm tone, use patient name>",
   "risk": "low|medium|high",
   "actions": [],
   "queue_symptoms": [],
   "appointment_intent": false,
-  "appointment_symptoms": []
+  "appointment_symptoms": [],
+  "check_medications": false,
+  "document_analysis": null
 }
 
-ACTIONS:
-- "alert_doctor"       — emergency or severe worsening → notify assigned doctor immediately
-- "suggest_revisit"    — symptoms not improving
-- "remind_medication"  — patient mentions medication/missed dose
-- "join_queue"         — patient wants to see doctor urgently (today/now)
-- "book_appointment"   — patient wants to schedule a future appointment
+=== ACTIONS (add to actions array as needed) ===
+- "alert_doctor"      → patient feels sick / unwell / bad / worse / has pain → ALWAYS trigger
+- "suggest_revisit"   → symptoms not improving for days
+- "remind_medication" → patient asks about or mentions medication
+- "join_queue"        → patient wants to see doctor TODAY urgently
+- "book_appointment"  → patient wants a FUTURE appointment (any mention of booking/scheduling)
+- "check_medications" → patient asks if they took their meds today
 
-queue_symptoms: list when actions includes "join_queue"
-appointment_symptoms: list when actions includes "book_appointment"
-appointment_intent: true when patient mentions making/booking an appointment
+=== RISK LEVELS ===
+- high  : chest pain, cannot breathe, severe pain, emergency, stroke, unconscious
+- medium: feeling sick, feel bad, feel unwell, worse, headache, fever, nausea, vomiting, pain
+- low   : medication questions, general questions, feeling ok/better
 
-RISK DETECTION:
-- high: chest pain, can't breathe, unconscious, severe pain, stroke, emergency
-- medium: worsening, not improving, high fever, vomiting, can't eat/sleep
-- low: mild symptoms, medication questions, general recovery
+=== CRITICAL RULES ===
+1. If patient says they feel sick/bad/unwell/worse OR mentions ANY symptom → set risk to "medium" minimum, add "alert_doctor"
+2. If patient mentions appointment/book/schedule → set appointment_intent=true, add "book_appointment", tell them to pick date from calendar
+3. If patient asks about medication status/check → set check_medications=true, add "check_medications"
+4. Always reference patient's ACTUAL diagnosis ($diagnosis) and medications when relevant
+5. Address patient as $patientName (use first name)
 
-IMAGE HANDLING:
-- If a medication bill/receipt image is provided, read and explain: medication names, dosages, frequency, prices, instructions
-- Be helpful and clear when explaining medical documents
-
-BEHAVIOUR:
-- Be warm and empathetic. Answer the actual question first.
-- For "hi/hello" → greet warmly, ask how they feel.
-- For food/diet questions → give practical advice.
-- For medication mentions → always include "remind_medication".
-- For ANY mention of "appointment", "book", "schedule", "see doctor later" → set appointment_intent=true and include "book_appointment" in actions.
-- For urgent "see doctor now/today" → include "join_queue" instead.
-- For high risk → include "alert_doctor" AND high risk level.
-- For worsening symptoms → include "alert_doctor" with medium or high risk.
-- Never diagnose. Never prescribe.
+=== DOCUMENT ANALYSIS (only when image is provided) ===
+Set document_analysis to:
+{
+  "type": "medication_bill|prescription|lab_report|medical_report|other",
+  "summary": "<2-3 plain-English sentences explaining the document>",
+  "items": [{"name":"...","dosage":"...","frequency":"...","price":"...","instructions":"..."}],
+  "total_cost": "...",
+  "key_notes": ["important note 1","important note 2"],
+  "patient_advice": "<what patient should know or do next>"
+}
+If no image → document_analysis must be null.
 ''';
+  }
 
-  // ── Doctor system prompt ──────────────────────────────────────────────────
-  static const _doctorSystem = r'''
+  // ── Build doctor system prompt ────────────────────────────────────────────
+  static String _buildDoctorSystem({
+    required String       doctorName,
+    required String       doctorId,
+    required List<String> patientSummaries,
+  }) {
+    final patients = patientSummaries.isEmpty
+        ? '  No assigned patients yet.'
+        : patientSummaries.map((p) => '  - $p').join('\n');
+    return '''
 You are CareLoop AI, a clinical assistant for DOCTORS.
 
-RESPONSE FORMAT — always reply in valid JSON only:
+=== DOCTOR PROFILE ===
+Doctor: Dr. $doctorName (ID: $doctorId)
+Assigned Patients:
+$patients
+
+=== RESPONSE FORMAT ===
+ALWAYS reply in valid JSON only.
 {
-  "message": "<reply ≤120 words, professional and concise>",
+  "message": "<reply ≤120 words, professional>",
   "actions": [],
   "patient_id": null,
-  "send_to_patient": null
+  "send_to_patient": null,
+  "doctor_advice": null
 }
 
-ACTIONS:
-- "check_patient_status"     — doctor asks about a patient → look up their latest check-ins/alerts
-- "send_appointment_request" — doctor wants to ask a patient to book an appointment
-- "send_patient_message"     — doctor wants to send a message to a patient via AI
-- "acknowledge_alert"        — doctor acknowledges or responds to a health alert
+=== ACTIONS ===
+- "check_patient_status"     → doctor asks about a specific patient
+- "send_appointment_request" → doctor wants patient to schedule appointment
+- "send_patient_message"     → doctor wants to message a patient
+- "respond_to_alert"         → doctor sends clinical advice after patient health alert
 
-patient_id: fill when an action targets a specific patient (use patient name or ID from context)
-send_to_patient: the message text to relay to the patient (when action = send_patient_message or send_appointment_request)
+=== FIELDS ===
+- patient_id: name/ID of target patient
+- send_to_patient: exact message text to deliver to patient
+- doctor_advice: clinical advice string when responding to alert
 
-IMAGE HANDLING:
-- If an image is provided (medical image, report, etc.), analyze it and provide clinical observations
-- Describe findings clearly and professionally
-
-BEHAVIOUR:
-- Be concise and clinical.
-- When doctor asks "how is [patient]?" → include "check_patient_status".
-- When doctor says "ask [patient] to book appointment" → include "send_appointment_request" and populate send_to_patient with a polite appointment request message.
-- When doctor says "send message to [patient]" → include "send_patient_message".
-- Reference patient data from context when available.
-- Never fabricate clinical data.
+=== BEHAVIOUR ===
+- Reference actual patient list above
+- When responding to alert → "respond_to_alert" + populate doctor_advice
+- Never fabricate patient data
 ''';
+  }
 
+  // ── Instance fields ───────────────────────────────────────────────────────
   final GeminiRole _role;
   final List<Map<String, dynamic>> _history = [];
-  bool _ready = false;
+  bool   _ready        = false;
+  String _systemPrompt = '';
 
   GeminiService({GeminiRole role = GeminiRole.patient}) : _role = role;
-
-  String get _systemPrompt =>
-      _role == GeminiRole.doctor ? _doctorSystem : _patientSystem;
 
   bool get _hasValidKey =>
       AppConfig.geminiApiKey.isNotEmpty &&
@@ -116,55 +150,71 @@ BEHAVIOUR:
     required List<String> medications,
     String?               role,
     String?               doctorId,
+    String?               assignedDoctorName,
     List<String>?         patientSummaries,
   }) async {
     if (_ready) return;
 
     if (!_hasValidKey) {
-      throw Exception('Invalid Gemini API key. Please check app_config.dart and ensure GEMINI_KEY is set in env.json');
+      throw Exception(
+          'Invalid Gemini API key. Check GEMINI_KEY in env.json.');
     }
 
-    String ctx;
+    // Build personalised system prompt with real data
     if (_role == GeminiRole.doctor) {
-      ctx = 'Doctor: $name, ID: ${doctorId ?? "unknown"}. '
-          'Assigned patients: ${patientSummaries?.join("; ") ?? "none"}. '
-          'Acknowledge.';
+      _systemPrompt = _buildDoctorSystem(
+        doctorName:       name,
+        doctorId:         doctorId ?? 'unknown',
+        patientSummaries: patientSummaries ?? [],
+      );
     } else {
-      ctx = 'Patient: $name, Dx: $diagnosis, Day $daysSinceVisit post-visit, '
-          'Meds: ${medications.isEmpty ? "none" : medications.join(", ")}. '
-          'Acknowledge.';
+      _systemPrompt = _buildPatientSystem(
+        patientName:        name,
+        diagnosis:          diagnosis,
+        daysSinceVisit:     daysSinceVisit,
+        medications:        medications,
+        assignedDoctorName: assignedDoctorName,
+      );
     }
 
-    // Test API connection first with a simple call
+    // Test connectivity
     try {
-      await _raw(
-        contents: [{'role': 'user', 'parts': [{'text': 'hello'}]}],
-        maxTokens: 10,
+      await _rawCall(
+        contents: [{'role': 'user', 'parts': [{'text': 'ping'}]}],
+        maxTokens: 5,
       );
     } catch (e) {
-      throw Exception('Gemini API connection failed: $e\n\nPlease check:\n'
-          '1. Your GEMINI_KEY in env.json is correct\n'
-          '2. The API key has Gemini API enabled in Google Cloud Console\n'
-          '3. You have internet connection');
+      throw Exception('Gemini API connection failed: $e\n\n'
+          'Check: 1) GEMINI_KEY in env.json  '
+          '2) Gemini API enabled in Google Cloud Console  '
+          '3) Internet connection');
     }
+
+    // Seed conversation with patient context acknowledgement
+    final ctx = _role == GeminiRole.doctor
+        ? 'Doctor Dr. $name ready. Patients: ${(patientSummaries ?? []).join("; ")}.'
+        : 'Patient $name context loaded. Diagnosis: $diagnosis. '
+        'Day $daysSinceVisit. Meds: ${medications.isEmpty ? "none" : medications.join(", ")}. '
+        '${assignedDoctorName != null ? "Doctor: Dr. $assignedDoctorName" : "No assigned doctor."}';
 
     _history
       ..add({'role': 'user',  'parts': [{'text': ctx}]})
       ..add({'role': 'model', 'parts': [{'text': _ackJson}]});
+
     _ready = true;
   }
 
   String get _ackJson => _role == GeminiRole.doctor
-      ? '{"message":"ready","actions":[],"patient_id":null,"send_to_patient":null}'
-      : '{"message":"ready","risk":"low","actions":[],"queue_symptoms":[],"appointment_intent":false,"appointment_symptoms":[]}';
+      ? '{"message":"Ready to assist, Doctor.","actions":[],"patient_id":null,"send_to_patient":null,"doctor_advice":null}'
+      : '{"message":"Ready to help.","risk":"low","actions":[],"queue_symptoms":[],"appointment_intent":false,"appointment_symptoms":[],"check_medications":false,"document_analysis":null}';
 
-  // ── Reset ─────────────────────────────────────────────────────────────────
   void reset() {
     _history.clear();
     _ready = false;
+    _systemPrompt = '';
   }
 
-  // ── Send message (text only) ──────────────────────────────────────────────
+  // ── Send text message ─────────────────────────────────────────────────────
   Future<GeminiResponse> sendMessage(String msg) async {
     _history.add({'role': 'user', 'parts': [{'text': msg}]});
     final r = await _call(List.from(_history));
@@ -172,234 +222,184 @@ BEHAVIOUR:
     return r;
   }
 
-  // ── Send message with image ───────────────────────────────────────────────
+  // ── Send with image ───────────────────────────────────────────────────────
   Future<GeminiResponse> sendMessageWithImage(
       String msg, Uint8List imageBytes, String mimeType) async {
     final base64Image = base64Encode(imageBytes);
     final userParts = [
       {'text': msg},
-      {
-        'inline_data': {
-          'mime_type': mimeType,
-          'data': base64Image,
-        }
-      }
+      {'inline_data': {'mime_type': mimeType, 'data': base64Image}},
     ];
     _history.add({'role': 'user', 'parts': userParts});
 
     final contentsForApi = List<Map<String, dynamic>>.from(
-        _history.sublist(0, _history.length - 1)
-    );
+        _history.sublist(0, _history.length - 1));
     contentsForApi.add({'role': 'user', 'parts': userParts});
 
-    final r = await _call(contentsForApi);
+    final r = await _call(contentsForApi, max: 1000);
     _history.add({'role': 'model', 'parts': [{'text': r.rawText}]});
     return r;
   }
 
-  // ── Check-in question (patient only) ──────────────────────────────────────
+  // ── Check-in question generation ──────────────────────────────────────────
   Future<String> generateCheckInQuestion(String dx, int day) async {
     try {
-      final t = await _raw(
+      final t = await _rawCall(
         contents: [{'role': 'user', 'parts': [{'text':
-        'Day $day post-visit for $dx. ONE friendly check-in question ≤15 words. Just the question.'}]}],
+        'Patient has $dx, day $day post-visit. '
+            'Write ONE friendly check-in question under 15 words. '
+            'Just the question text, no quotes or extra text.'}]}],
         maxTokens: 40,
       );
       return t.trim().isNotEmpty ? t.trim() : _defaultQ(day);
-    } catch (_) { return _defaultQ(day); }
+    } catch (_) {
+      return _defaultQ(day);
+    }
   }
 
-  // ── HTTP ──────────────────────────────────────────────────────────────────
+  // ── Core HTTP call ────────────────────────────────────────────────────────
   Future<GeminiResponse> _call(
-      List<Map<String, dynamic>> contents, {int max = 350}) async {
+      List<Map<String, dynamic>> contents, {int max = 600}) async {
     if (!_hasValidKey) {
       return GeminiResponse(
-        message: _role == GeminiRole.doctor
-            ? 'API key not configured. Please add your Gemini API key to env.json and restart the app.'
-            : 'Unable to connect to AI service. Please check your internet connection.',
-        actions: [],
-        rawText: '',
-        role: _role,
-        isError: true,
+        message: 'AI service not configured. Add GEMINI_KEY to env.json.',
+        actions: [], rawText: '', role: _role, isError: true,
       );
     }
     try {
-      return GeminiResponse.fromRaw(
-          await _raw(contents: contents, maxTokens: max), _role);
+      final raw = await _rawCall(contents: contents, maxTokens: max);
+      return GeminiResponse.fromRaw(raw, _role);
     } on _Quota {
-      return _fallback(_lastUser(contents));
-    }
-    on _Err catch (e) {
-      print('❌ Gemini API Error: ${e.msg}');
-      if (_role == GeminiRole.doctor) {
-        return GeminiResponse(
-          message: 'API error: ${e.msg}\n\nPlease check:\n'
-              '1. Your GEMINI_KEY in env.json is correct\n'
-              '2. The API key has Gemini API enabled\n'
-              '3. You have internet connection',
-          actions: [], rawText: '', role: _role, isError: true,
-        );
-      }
-      return _fallback(_lastUser(contents));
-    }
-    catch (e) {
-      print('❌ Gemini Connection Error: $e');
-      if (_role == GeminiRole.doctor) {
-        return GeminiResponse(
-          message: 'Connection error: $e\n\nPlease check your internet connection and try again.',
-          actions: [], rawText: '', role: _role, isError: true,
-        );
-      }
-      return _fallback(_lastUser(contents));
+      return _fallback(_lastUserText(contents));
+    } on _Err catch (e) {
+      print('❌ Gemini: ${e.msg}');
+      return _role == GeminiRole.doctor
+          ? GeminiResponse(message: '⚠️ ${e.msg}', actions: [], rawText: '', role: _role, isError: true)
+          : _fallback(_lastUserText(contents));
+    } catch (e) {
+      print('❌ Gemini connection: $e');
+      return _role == GeminiRole.doctor
+          ? GeminiResponse(message: '⚠️ Connection error.', actions: [], rawText: '', role: _role, isError: true)
+          : _fallback(_lastUserText(contents));
     }
   }
 
-  Future<String> _raw({
+  Future<String> _rawCall({
     required List<Map<String, dynamic>> contents,
-    int maxTokens = 350,
+    int maxTokens = 600,
   }) async {
-    if (!_hasValidKey) throw _Err('No valid API key - check env.json');
+    if (!_hasValidKey) throw _Err('No valid API key');
 
     final uri  = Uri.parse('$_baseUrl?key=${AppConfig.geminiApiKey}');
-
-    // ✅ CRITICAL FIX: system_instruction.parts MUST be an array
     final body = jsonEncode({
       'system_instruction': {
-        'parts': [{'text': _systemPrompt}]  // ← Array format required by Gemini API
+        'parts': [{'text': _systemPrompt.isNotEmpty ? _systemPrompt : 'Be a helpful assistant.'}],
       },
-      'contents': contents,
+      'contents':           contents,
       'generationConfig': {
-        'temperature': 0.4,
+        'temperature':     0.4,
         'maxOutputTokens': maxTokens,
-        'topP': 0.9
+        'topP':            0.9,
       },
     });
 
-    print('🔵 Gemini API Request to: $_baseUrl');
-    print('🔵 Using model: $_model');
-    print('🔵 API Key starts with: ${AppConfig.geminiApiKey.substring(0, 10)}...');
-
     final res = await http
         .post(uri, headers: {'Content-Type': 'application/json'}, body: body)
-        .timeout(const Duration(seconds: 20));
-
-    print('🔵 Gemini API Response Status: ${res.statusCode}');
+        .timeout(const Duration(seconds: 30));
 
     switch (res.statusCode) {
       case 200:
         final d     = jsonDecode(res.body) as Map;
         final cands = d['candidates'] as List?;
-        if (cands == null || cands.isEmpty) throw _Err('Empty response');
+        if (cands == null || cands.isEmpty) throw _Err('Empty candidates');
         final parts = (cands[0]['content'] as Map?)?['parts'] as List?;
         return (parts?.first?['text'] ?? '') as String;
       case 429: throw _Quota();
-      case 403: throw _Err('Gemini 403 — API key invalid or API not enabled in Google Cloud Console');
-      case 404:
-        print('❌ 404 Error - Model: $_model, Endpoint: $_baseUrl');
-        throw _Err('Gemini 404 — Model "$_model" not found. Check if model name is correct.');
+      case 403: throw _Err('403 — API key invalid or Gemini API not enabled in Google Cloud Console');
+      case 404: throw _Err('404 — Model "$_model" not found');
       case 400:
-        final errorBody = res.body;
-        print('❌ Gemini 400 Error Body: $errorBody');
-        // Parse error for more helpful message
         try {
-          final errorJson = jsonDecode(errorBody);
-          final errorMsg = errorJson['error']?['message'] ?? errorBody;
-          throw _Err('Gemini API error: $errorMsg');
-        } catch (_) {
-          throw _Err('Gemini 400: $errorBody');
-        }
+          final err = (jsonDecode(res.body) as Map)['error']?['message'] ?? res.body;
+          throw _Err('400: $err');
+        } catch (_) { throw _Err('400: ${res.body}'); }
       default:
-        final errorBody = res.body;
-        print('❌ Gemini Error Body: $errorBody');
-        throw _Err('Gemini ${res.statusCode}: $errorBody');
+        throw _Err('${res.statusCode}: ${res.body}');
     }
   }
 
   // ── Rule-based fallback (patient only) ───────────────────────────────────
   GeminiResponse _fallback(String input) {
     if (_role == GeminiRole.doctor) {
-      return GeminiResponse(
-        message: 'I\'m unable to connect to the AI service. '
-            'Please ensure your Gemini API key is configured correctly in env.json.',
-        actions: [], rawText: '', role: _role, isError: true,
-      );
+      return GeminiResponse(message: 'AI unavailable. Check API key.', actions: [], rawText: '', role: _role, isError: true);
     }
     final t = input.toLowerCase();
-    if (_has(t, ['appointment','book','schedule','see doctor later','visit next'])) {
+    if (_has(t, ['appointment','book','schedule','see doctor later','make appointment'])) {
       return GeminiResponse(
-        message: 'Of course! I\'ll help you book an appointment. '
-            'Please select a date and time below.',
+        message: 'Sure! Please pick a date from the calendar below — I\'ll book the earliest available slot for you.',
         risk: RiskLevel.low, actions: ['book_appointment'],
-        queueSymptoms: [], appointmentIntent: true,
-        appointmentSymptoms: _extractSymptoms(t), rawText: '', role: _role,
+        appointmentIntent: true, appointmentSymptoms: _extractSymptoms(t),
+        queueSymptoms: [], rawText: '', role: _role,
       );
     }
-    if (_has(t, ['chest pain','can\'t breathe','shortness of breath',
-      'fainted','severe pain','emergency','stroke'])) {
+    if (_has(t, ['did i take','have i taken','check my med','medication status','took my med'])) {
       return GeminiResponse(
-        message: 'This sounds serious. Please seek emergency care immediately. '
-            'Your doctor has been alerted.',
+        message: 'Let me check your medication status for today right now!',
+        risk: RiskLevel.low, actions: ['check_medications'],
+        checkMedications: true, queueSymptoms: [], rawText: '', role: _role,
+      );
+    }
+    if (_has(t, ['chest pain','can\'t breathe','shortness of breath','severe pain','emergency','fainted'])) {
+      return GeminiResponse(
+        message: 'This sounds very serious! I\'ve alerted your doctor immediately. Please seek emergency care if needed — call 999 or 911.',
         risk: RiskLevel.high, actions: ['alert_doctor'],
         queueSymptoms: [], rawText: '', role: _role,
       );
     }
-    if (_has(t, ['not feeling well','feel sick','feel bad','getting worse',
-      'worse','worsening','not improving'])) {
+    if (_has(t, ['feel sick','feel bad','feel unwell','not well','getting worse','feel worse','not improving','sick','unwell','headache','fever','nausea','pain'])) {
       return GeminiResponse(
-        message: 'I\'m sorry you\'re not feeling well. '
-            'Your doctor has been notified. Please rest and stay hydrated. '
-            'If symptoms worsen quickly, seek emergency care.',
-        risk: RiskLevel.medium, actions: ['alert_doctor','suggest_revisit'],
+        message: 'I\'m sorry you\'re not feeling well. I\'ve notified your doctor — they will review your situation and send advice back to you shortly. Please rest.',
+        risk: RiskLevel.medium, actions: ['alert_doctor'],
         queueSymptoms: [], rawText: '', role: _role,
       );
     }
     if (_has(t, ['medication','medicine','pill','forgot','missed'])) {
-      NotificationService.showImmediateReminder(
-          'CareLoop: please take your medication now.');
+      NotificationService.showImmediateReminder('CareLoop: please take your medication now.');
       return GeminiResponse(
-        message: 'It\'s important to stay on schedule with your medication. '
-            'I\'ve sent you a reminder. Don\'t skip doses without consulting '
-            'your doctor.',
+        message: 'Staying on schedule with your medication is key to your recovery. I\'ve sent a reminder notification!',
         risk: RiskLevel.low, actions: ['remind_medication'],
         queueSymptoms: [], rawText: '', role: _role,
       );
     }
     if (_has(t, ['better','good','great','fine','well'])) {
       return GeminiResponse(
-        message: 'Great to hear you\'re feeling better! Keep up your '
-            'medication schedule and recovery plan. 😊',
+        message: 'Great to hear you\'re feeling better! Keep up with your medications and recovery plan. 😊',
         risk: RiskLevel.low, actions: [], queueSymptoms: [], rawText: '', role: _role,
       );
     }
     return GeminiResponse(
-      message: 'Thank you for checking in. Continue your recovery plan and '
-          'take medications on schedule. Let me know if anything changes.',
+      message: 'Thank you for checking in! Continue your recovery plan and take your medications on schedule. Let me know if anything changes.',
       risk: RiskLevel.low, actions: [], queueSymptoms: [], rawText: '', role: _role,
     );
   }
 
-  List<String> _extractSymptoms(String text) {
-    const known = ['fever','cough','headache','nausea','fatigue','pain',
-      'sore throat','body ache','dizziness','vomiting'];
-    return known.where(text.contains).toList();
+  List<String> _extractSymptoms(String t) {
+    const known = ['fever','cough','headache','nausea','fatigue','pain','sore throat','dizziness','vomiting'];
+    return known.where(t.contains).toList();
   }
 
   bool _has(String t, List<String> kw) => kw.any(t.contains);
-  String _lastUser(List<Map<String,dynamic>> c) {
+
+  String _lastUserText(List<Map<String, dynamic>> c) {
     for (final m in c.reversed) {
       if (m['role'] == 'user') {
-        final parts = m['parts'] as List?;
-        if (parts != null) {
-          for (final p in parts) {
-            if (p is Map && p.containsKey('text')) {
-              return p['text'] as String;
-            }
-          }
+        for (final p in (m['parts'] as List? ?? [])) {
+          if (p is Map && p.containsKey('text')) return p['text'] as String;
         }
       }
     }
     return '';
   }
+
   String _defaultQ(int day) {
     if (day <= 1) return 'How are you feeling after your visit today?';
     if (day <= 3) return 'How are your symptoms compared to yesterday?';
@@ -411,9 +411,10 @@ BEHAVIOUR:
 class _Err   implements Exception { final String msg; const _Err(this.msg); }
 class _Quota implements Exception {}
 
-// ─── Response ─────────────────────────────────────────────────────────────────
+// ─── Risk Level ───────────────────────────────────────────────────────────────
 enum RiskLevel { low, medium, high }
 
+// ─── GeminiResponse ───────────────────────────────────────────────────────────
 class GeminiResponse {
   final String       message;
   final RiskLevel    risk;
@@ -421,13 +422,16 @@ class GeminiResponse {
   final List<String> queueSymptoms;
   final List<String> appointmentSymptoms;
   final bool         appointmentIntent;
+  final bool         checkMedications;
   final bool         isError;
   final String       rawText;
   final GeminiRole   role;
+  final DocumentAnalysis? documentAnalysis;
 
-  // Doctor-specific fields
+  // Doctor-specific
   final String? patientId;
   final String? sendToPatient;
+  final String? doctorAdvice;
 
   const GeminiResponse({
     required this.message,
@@ -436,48 +440,99 @@ class GeminiResponse {
     this.queueSymptoms       = const [],
     this.appointmentSymptoms = const [],
     this.appointmentIntent   = false,
+    this.checkMedications    = false,
     this.isError             = false,
     required this.rawText,
     required this.role,
+    this.documentAnalysis,
     this.patientId,
     this.sendToPatient,
+    this.doctorAdvice,
   });
 
   factory GeminiResponse.fromRaw(String raw, GeminiRole role) {
     try {
-      final cleaned = raw.replaceAll(RegExp(r'```json?|```'), '').trim();
-      final s = cleaned.indexOf('{'), e = cleaned.lastIndexOf('}');
-      if (s == -1 || e == -1) throw '';
+      final cleaned = raw.replaceAll(RegExp(r'```json\s*|```\s*'), '').trim();
+      final s = cleaned.indexOf('{');
+      final e = cleaned.lastIndexOf('}');
+      if (s == -1 || e == -1 || e <= s) throw 'no json';
       final map = jsonDecode(cleaned.substring(s, e + 1)) as Map;
+
+      DocumentAnalysis? docAnalysis;
+      if (map['document_analysis'] is Map) {
+        try { docAnalysis = DocumentAnalysis.fromMap(map['document_analysis'] as Map<String,dynamic>); } catch (_) {}
+      }
+
       return GeminiResponse(
-        message:             (map['message'] as String?)?.trim() ?? 'Update received.',
-        risk:                _risk(map['risk']),
+        message:             (map['message'] as String?)?.trim() ?? 'Received.',
+        risk:                _parseRisk(map['risk']),
         actions:             List<String>.from((map['actions'] as List?) ?? []),
         queueSymptoms:       List<String>.from((map['queue_symptoms'] as List?) ?? []),
         appointmentSymptoms: List<String>.from((map['appointment_symptoms'] as List?) ?? []),
         appointmentIntent:   map['appointment_intent'] == true,
+        checkMedications:    map['check_medications'] == true,
         rawText:             raw,
         role:                role,
+        documentAnalysis:    docAnalysis,
         patientId:           map['patient_id'] as String?,
         sendToPatient:       map['send_to_patient'] as String?,
+        doctorAdvice:        map['doctor_advice'] as String?,
       );
     } catch (_) {
-      return GeminiResponse(
-        message: raw.isNotEmpty ? raw : 'Update received.',
-        actions: [], rawText: raw, role: role,
-      );
+      return GeminiResponse(message: 'Update received.', actions: [], rawText: raw, role: role);
     }
   }
 
-  factory GeminiResponse.error(String msg) => GeminiResponse(
-      message: msg, actions: [], rawText: '', isError: true,
-      role: GeminiRole.patient);
-
-  static RiskLevel _risk(dynamic v) {
+  static RiskLevel _parseRisk(dynamic v) {
     switch (v?.toString().toLowerCase()) {
       case 'high':   return RiskLevel.high;
       case 'medium': return RiskLevel.medium;
       default:       return RiskLevel.low;
     }
   }
+}
+
+// ─── Document Analysis ────────────────────────────────────────────────────────
+class DocumentAnalysis {
+  final String      type;
+  final String      summary;
+  final List<MedItem> items;
+  final String?     totalCost;
+  final List<String> keyNotes;
+  final String      patientAdvice;
+
+  const DocumentAnalysis({
+    required this.type, required this.summary, required this.items,
+    this.totalCost, required this.keyNotes, required this.patientAdvice,
+  });
+
+  factory DocumentAnalysis.fromMap(Map<String, dynamic> m) => DocumentAnalysis(
+    type:          m['type']          as String? ?? 'other',
+    summary:       m['summary']       as String? ?? '',
+    items:         (m['items'] as List? ?? []).map<MedItem>((i) {
+      final x = i as Map<String, dynamic>;
+      return MedItem(
+        name:         x['name']         as String? ?? '',
+        dosage:       x['dosage']       as String? ?? '',
+        frequency:    x['frequency']    as String? ?? '',
+        price:        x['price']        as String?,
+        instructions: x['instructions'] as String? ?? '',
+      );
+    }).toList(),
+    totalCost:     m['total_cost']    as String?,
+    keyNotes:      List<String>.from(m['key_notes'] ?? []),
+    patientAdvice: m['patient_advice'] as String? ?? '',
+  );
+}
+
+class MedItem {
+  final String  name;
+  final String  dosage;
+  final String  frequency;
+  final String? price;
+  final String  instructions;
+  const MedItem({
+    required this.name, required this.dosage, required this.frequency,
+    this.price, required this.instructions,
+  });
 }
