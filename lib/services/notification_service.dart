@@ -32,7 +32,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     notificationDetails: NotificationDetails(
       android: AndroidNotificationDetails(
         channelId, _channelName(channelId),
-        importance: Importance.max, priority: Priority.max,
+         importance: Importance.max, priority: Priority.max,
         icon: '@mipmap/ic_launcher',
       ),
       iOS: const DarwinNotificationDetails(),

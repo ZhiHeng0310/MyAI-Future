@@ -208,6 +208,7 @@ class InboxService extends ChangeNotifier {
     required String userId,
     required String doctorName,
     required String message,
+    Map<String, dynamic>? metadata,
   }) async {
     final notification = NotificationModel(
       id: '',
@@ -216,7 +217,10 @@ class InboxService extends ChangeNotifier {
       message: message,
       type: NotificationType.doctor,
       timestamp: DateTime.now(),
-      metadata: {'doctorName': doctorName},
+      metadata: {
+        'doctorName': doctorName,
+        ...?metadata,
+      },
     );
 
     await _saveAndNotify(notification);

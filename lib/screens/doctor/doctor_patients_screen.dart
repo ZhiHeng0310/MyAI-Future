@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import '../../models/patient_model.dart';
 import '../../models/medication_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/firestore_service.dart';
 import 'doctor_add_medication_screen.dart';
 
@@ -25,6 +27,8 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final doctorId = context.watch<AuthProvider>().doctor?.id;
+
     return Column(
       children: [
         // ── Search bar ──
@@ -53,7 +57,9 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
         // ── Patient list ──
         Expanded(
           child: StreamBuilder<List<PatientModel>>(
-            stream: _db.allPatientsStream(),
+            stream: doctorId == null
+                ? Stream.value(const <PatientModel>[])
+                : _db.doctorPatientsStream(doctorId),
             builder: (ctx, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
                 return const Center(
@@ -93,7 +99,11 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                 padding:     const EdgeInsets.fromLTRB(16, 4, 16, 16),
                 itemCount:   filtered.length,
                 itemBuilder: (_, i) =>
-                    _PatientCard(patient: filtered[i], db: _db),
+                    _PatientCard(
+                      patient: filtered[i],
+                      db: _db,
+                      doctorId: doctorId,
+                    ),
               );
             },
           ),
@@ -108,7 +118,12 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
 class _PatientCard extends StatefulWidget {
   final PatientModel     patient;
   final FirestoreService db;
-  const _PatientCard({required this.patient, required this.db});
+  final String?          doctorId;
+  const _PatientCard({
+    required this.patient,
+    required this.db,
+    required this.doctorId,
+  });
 
   @override
   State<_PatientCard> createState() => _PatientCardState();
@@ -212,7 +227,12 @@ class _PatientCardState extends State<_PatientCard> {
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                 // ✅ FIX 2: StreamBuilder for live medication updates
                 child: StreamBuilder<List<Medication>>(
-                  stream: widget.db.medicationsStream(widget.patient.id),
+                  stream: widget.doctorId == null
+                      ? Stream.value(const <Medication>[])
+                      : widget.db.medicationsStreamForDoctor(
+                          widget.patient.id,
+                          widget.doctorId!,
+                        ),
                   builder: (ctx, snap) {
                     if (snap.connectionState == ConnectionState.waiting) {
                       return const Padding(

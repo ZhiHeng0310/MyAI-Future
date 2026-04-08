@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/notification_model.dart';
+import 'home/home_screen.dart';
 import '../services/inbox_service.dart';
 
 class InboxScreen extends StatelessWidget {
@@ -298,15 +299,31 @@ class _NotificationTile extends StatelessWidget {
         }
         break;
       case NotificationType.medication:
-      // Navigate to medications
-        Navigator.pushNamed(context, '/medications');
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 3)),
+        );
         break;
       case NotificationType.queue:
-      // Navigate to queue status
-        Navigator.pushNamed(context, '/queue-status');
+        if (notification.metadata?['action'] == 'open_appointments') {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 4)),
+          );
+        } else {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 1)),
+          );
+        }
         break;
       case NotificationType.doctor:
-      // Could navigate to chat or messages
+        if (notification.metadata?['action'] == 'open_appointments') {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 4)),
+          );
+        } else {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 2)),
+          );
+        }
         break;
       case NotificationType.general:
       // No specific action

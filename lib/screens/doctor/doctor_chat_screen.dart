@@ -225,7 +225,6 @@ class _QuickPrompts extends StatelessWidget {
     'Check patient status',
     'Send appointment request',
     'Review recent alerts',
-    'Patient medication summary',
   ];
   const _QuickPrompts({required this.onTap});
 

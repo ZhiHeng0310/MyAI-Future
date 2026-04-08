@@ -20,6 +20,8 @@ class FirestoreService {
   Future<void> savePatient(PatientModel p) =>
       _db.collection('patients').doc(p.id).set(p.toMap());
 
+  /// Legacy compatibility helper. New doctor-patient relationships come from
+  /// medications.doctorId instead of a static patient assignment.
   Future<void> assignDoctor(String patientId, String doctorId) =>
       _db.collection('patients').doc(patientId)
           .update({'assignedDoctorId': doctorId});
@@ -31,14 +33,46 @@ class FirestoreService {
       s.docs.map((d) => PatientModel.fromMap(d.data(), d.id)).toList());
 
   Future<List<PatientModel>> getPatientsForDoctor(String doctorId) async {
-    final snap = await _db
-        .collection('patients')
-        .where('assignedDoctorId', isEqualTo: doctorId)
+    final medSnap = await _db
+        .collection('medications')
+        .where('doctorId', isEqualTo: doctorId)
+        .where('active', isEqualTo: true)
         .get();
-    return snap.docs
-        .map((d) => PatientModel.fromMap(d.data(), d.id))
+
+    final patientIds = medSnap.docs
+        .map((d) => d.data()['patientId'] as String? ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
         .toList();
+
+    if (patientIds.isEmpty) return [];
+
+    final patients = await Future.wait(patientIds.map(getPatient));
+    return patients.whereType<PatientModel>().toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   }
+
+  Stream<List<PatientModel>> doctorPatientsStream(String doctorId) => _db
+      .collection('medications')
+      .where('doctorId', isEqualTo: doctorId)
+      .where('active', isEqualTo: true)
+      .snapshots()
+      .asyncMap((snap) async {
+        final patientIds = snap.docs
+            .map((d) => d.data()['patientId'] as String? ?? '')
+            .where((id) => id.isNotEmpty)
+            .toSet()
+            .toList();
+
+        if (patientIds.isEmpty) return <PatientModel>[];
+
+        final patients = await Future.wait(patientIds.map(getPatient));
+        final resolved = patients.whereType<PatientModel>().toList()
+          ..sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
+        return resolved;
+      });
 
   // ─── Doctor ───────────────────────────────────────────────────────────────
 
@@ -56,6 +90,26 @@ class FirestoreService {
     return snap.docs
         .map((d) => DoctorModel.fromMap(d.data(), d.id))
         .toList();
+  }
+
+  Future<List<DoctorModel>> getDoctorsForPatient(String patientId) async {
+    final medSnap = await _db
+        .collection('medications')
+        .where('patientId', isEqualTo: patientId)
+        .where('active', isEqualTo: true)
+        .get();
+
+    final doctorIds = medSnap.docs
+        .map((d) => d.data()['doctorId'] as String? ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+
+    if (doctorIds.isEmpty) return [];
+
+    final doctors = await Future.wait(doctorIds.map(getDoctor));
+    return doctors.whereType<DoctorModel>().toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   }
 
   // ─── Queue ────────────────────────────────────────────────────────────────
@@ -264,6 +318,23 @@ class FirestoreService {
       .map((s) =>
       s.docs.map((d) => HealthAlert.fromMap(d.data(), d.id)).toList());
 
+  Future<List<HealthAlert>> getRecentAlertsForDoctor(
+    String doctorId, {
+    Duration within = const Duration(hours: 24),
+  }) async {
+    final cutoff = DateTime.now().subtract(within);
+    final snap = await _db
+        .collection('health_alerts')
+        .where('doctorId', isEqualTo: doctorId)
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
+        .orderBy('createdAt', descending: true)
+        .get();
+
+    return snap.docs
+        .map((d) => HealthAlert.fromMap(d.data(), d.id))
+        .toList();
+  }
+
   Future<int> unreadAlertCount(String doctorId) async {
     final snap = await _db
         .collection('health_alerts')
@@ -345,12 +416,40 @@ class FirestoreService {
         .toList();
   }
 
-  /// ✅ FIXED: always set assignedDoctorId when doctorId is provided
+  Future<List<Medication>> getMedicationsForPatientAndDoctor(
+    String patientId,
+    String doctorId,
+  ) async {
+    final snap = await _db
+        .collection('medications')
+        .where('patientId', isEqualTo: patientId)
+        .where('doctorId', isEqualTo: doctorId)
+        .where('active', isEqualTo: true)
+        .get();
+    return snap.docs
+        .map((d) => Medication.fromMap(d.data(), d.id))
+        .toList();
+  }
+
+  Stream<List<Medication>> medicationsStreamForDoctor(
+    String patientId,
+    String doctorId,
+  ) =>
+      _db
+          .collection('medications')
+          .where('patientId', isEqualTo: patientId)
+          .where('doctorId', isEqualTo: doctorId)
+          .where('active', isEqualTo: true)
+          .snapshots()
+          .map((s) =>
+              s.docs.map((d) => Medication.fromMap(d.data(), d.id)).toList());
+
   Future<String> addMedication(Medication med, {String? doctorId}) async {
     final ref = _db.collection('medications').doc();
     await ref.set(Medication(
       id:            ref.id,
       patientId:     med.patientId,
+      doctorId:      doctorId ?? med.doctorId,
       name:          med.name,
       dosage:        med.dosage,
       frequency:     med.frequency,
@@ -358,7 +457,8 @@ class FirestoreService {
       active:        true,
     ).toMap());
 
-    // ✅ Always assign doctor when doctorId is provided (not null-guarded)
+    // Keep legacy field in sync for older flows, but active relationship logic
+    // should read from medications.doctorId.
     if (doctorId != null && doctorId.isNotEmpty) {
       await assignDoctor(med.patientId, doctorId);
     }

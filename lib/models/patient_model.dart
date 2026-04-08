@@ -7,8 +7,8 @@ class PatientModel {
   final DateTime?    lastVisit;
   final List<String> allergies;
 
-  /// The doctor who first prescribed medication becomes the assigned doctor.
-  /// All health alerts and appointment bookings route to this doctor.
+  /// Legacy field kept for backwards compatibility.
+  /// Active doctor relationships are derived from medication prescriptions.
   final String? assignedDoctorId;
 
   const PatientModel({
@@ -27,7 +27,7 @@ class PatientModel {
     return DateTime.now().difference(lastVisit!).inDays;
   }
 
-  bool get hasAssignedDoctor => assignedDoctorId != null;
+  bool get hasAssignedDoctor => assignedDoctorId != null && assignedDoctorId!.isNotEmpty;
 
   factory PatientModel.fromMap(Map<String, dynamic> m, String id) =>
       PatientModel(

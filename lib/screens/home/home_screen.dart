@@ -18,15 +18,23 @@ import '../appointment/appointment_screen.dart';
 import '../../widgets/inbox_icon.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final int initialIndex;
+
+  const HomeScreen({super.key, this.initialIndex = 0});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int  _currentIndex = 0;
+  late int _currentIndex;
   bool _initialized  = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+  }
 
   @override
   void didChangeDependencies() {

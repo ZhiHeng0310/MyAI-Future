@@ -1,6 +1,7 @@
 class Medication {
   final String       id;
   final String       patientId;
+  final String?      doctorId;
   final String       name;
   final String       dosage;
   final String       frequency;
@@ -15,6 +16,7 @@ class Medication {
   const Medication({
     required this.id,
     required this.patientId,
+    this.doctorId,
     required this.name,
     required this.dosage,
     required this.frequency,
@@ -73,6 +75,7 @@ class Medication {
   factory Medication.fromMap(Map<String, dynamic> m, String id) => Medication(
     id:            id,
     patientId:     m['patientId']   ?? '',
+    doctorId:      m['doctorId'],
     name:          m['name']        ?? '',
     dosage:        m['dosage']      ?? '',
     frequency:     m['frequency']   ?? '',
@@ -86,6 +89,7 @@ class Medication {
 
   Map<String, dynamic> toMap() => {
     'patientId':    patientId,
+    'doctorId':     doctorId,
     'name':         name,
     'dosage':       dosage,
     'frequency':    frequency,
