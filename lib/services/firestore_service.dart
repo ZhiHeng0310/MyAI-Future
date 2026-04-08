@@ -431,6 +431,15 @@ class FirestoreService {
         .toList();
   }
 
+  Future<List<Medication>> getAllMedications() async {
+    final snap = await _db.collection('medications')
+        .where('active', isEqualTo: true)
+        .get();
+    return snap.docs
+        .map((d) => Medication.fromMap(d.data(), d.id))
+        .toList();
+  }
+
   Stream<List<Medication>> medicationsStreamForDoctor(
     String patientId,
     String doctorId,

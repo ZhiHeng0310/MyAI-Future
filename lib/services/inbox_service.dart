@@ -150,6 +150,29 @@ class InboxService extends ChangeNotifier {
     await _saveAndNotify(notification);
   }
 
+  /// Send appointment request notification
+  static Future<void> sendAppointmentRequestNotification({
+    required String userId,
+    required String doctorName,
+    required String message,
+  }) async {
+    final notification = NotificationModel(
+      id: '',
+      userId: userId,
+      title: '📅 Appointment Request from Dr. $doctorName',
+      message: message,
+      type: NotificationType.appointment,
+      timestamp: DateTime.now(),
+      metadata: {
+        'doctorName': doctorName,
+        'requestMessage': message,
+        'requestType': 'appointment',
+      },
+    );
+
+    await _saveAndNotify(notification);
+  }
+
   /// Send medication reminder (5 min late)
   static Future<void> sendMedicationReminder({
     required String userId,

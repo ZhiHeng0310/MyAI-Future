@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -167,8 +168,9 @@ class ChatProvider extends ChangeNotifier {
 
   /// SPEC: Get all doctors who prescribed medications to this patient
   Future<List<DoctorModel>> _getPrescribingDoctors(List<Medication> meds) async {
+    // FIX: use doctorId (the correct field name on Medication model)
     final doctorIds = meds
-        .map((m) => m.prescribedBy)
+        .map((m) => m.doctorId)
         .where((id) => id != null && id.isNotEmpty)
         .toSet()
         .toList();
@@ -324,8 +326,8 @@ class ChatProvider extends ChangeNotifier {
   }
 
   void _addBookingSuccessMsg(AppointmentSlot appt, DoctorModel doctor) {
-    final symptomsText = (appt.symptoms?.isNotEmpty ?? false)
-        ? appt.symptoms!.join(", ")
+    final symptomsText = (appt.symptoms.isNotEmpty)
+        ? appt.symptoms.join(", ")
         : "General consultation";
 
     _messages.add(ChatMessage(
@@ -346,8 +348,8 @@ class ChatProvider extends ChangeNotifier {
   /// SPEC: Send notifications to BOTH patient AND selected doctor
   Future<void> _sendAppointmentNotifications(
       DoctorModel doctor, AppointmentSlot appt) async {
-    final symptomsText = (appt.symptoms?.isNotEmpty ?? false)
-        ? appt.symptoms!.join(", ")
+    final symptomsText = appt.symptoms.isNotEmpty
+        ? appt.symptoms.join(", ")
         : "General consultation";
 
     // 1. Notify PATIENT
@@ -601,20 +603,22 @@ class ChatProvider extends ChangeNotifier {
   }
 
   List<TimeOfDay> _parseMedicationTimes(String frequency) {
-    // Parse frequency like "2x daily", "3x daily", "1x daily"
     final times = <TimeOfDay>[];
 
-    if (frequency.contains('1x') || frequency.contains('once')) {
-      times.add(const TimeOfDay(hour: 9, minute: 0)); // Morning
-    } else if (frequency.contains('2x') || frequency.contains('twice')) {
-      times.add(const TimeOfDay(hour: 9, minute: 0)); // Morning
-      times.add(const TimeOfDay(hour: 21, minute: 0)); // Night
-    } else if (frequency.contains('3x')) {
-      times.add(const TimeOfDay(hour: 9, minute: 0)); // Morning
-      times.add(const TimeOfDay(hour: 14, minute: 0)); // Afternoon
-      times.add(const TimeOfDay(hour: 21, minute: 0)); // Night
+    if (frequency.contains('1x') || frequency.contains('once') ||
+        frequency.toLowerCase().contains('once daily')) {
+      times.add(const TimeOfDay(hour: 9, minute: 0));
+    } else if (frequency.contains('2x') || frequency.contains('twice') ||
+        frequency.toLowerCase().contains('twice daily')) {
+      times.add(const TimeOfDay(hour: 9, minute: 0));
+      times.add(const TimeOfDay(hour: 21, minute: 0));
+    } else if (frequency.contains('3x') ||
+        frequency.toLowerCase().contains('three times')) {
+      times.add(const TimeOfDay(hour: 9, minute: 0));
+      times.add(const TimeOfDay(hour: 14, minute: 0));
+      times.add(const TimeOfDay(hour: 21, minute: 0));
     } else {
-      times.add(const TimeOfDay(hour: 9, minute: 0)); // Default
+      times.add(const TimeOfDay(hour: 9, minute: 0));
     }
 
     return times;
@@ -625,20 +629,17 @@ class ChatProvider extends ChangeNotifier {
       return '❌ Could not retrieve your medication data. Please try again.';
     }
 
-    // SPEC: If no medications
     if (s.noMeds) {
       return 'You don\'t have any medications prescribed yet. '
           'Your doctor will prescribe medications after your consultation.';
     }
 
-    // SPEC: If all taken → "You're all up to date"
     if (s.allTaken) {
       return '✅ You\'re all up to date! You\'ve taken all your medications today.\n\n'
           '${s.all.map((m) => '✓ ${m.name} (${m.dosage})').join('\n')}\n\n'
           'Great job keeping up with your medication schedule! 💊';
     }
 
-    // SPEC: If medication time passed and not taken → notify to take now
     if (s.missed.isNotEmpty) {
       final missedList = s.missed.map((m) =>
       '⚠️ ${m.name} (${m.dosage}) - ${m.frequency}').join('\n');
@@ -647,7 +648,6 @@ class ChatProvider extends ChangeNotifier {
           'I\'ve sent you a reminder notification. Please take them as soon as possible! 💊';
     }
 
-    // SPEC: If medication is upcoming → show next medication
     if (s.nextMedication != null) {
       final next = s.nextMedication!;
       final nextTime = _parseMedicationTimes(next.frequency).first;
@@ -671,7 +671,6 @@ class ChatProvider extends ChangeNotifier {
 
     // SPEC: Send alert to ALL doctors who prescribed medication to this patient
     if (_prescribingDoctors.isEmpty) {
-      // Fallback: send to any available doctor
       try {
         final all = await _db.getAllDoctors();
         if (all.isNotEmpty) {

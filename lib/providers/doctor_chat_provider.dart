@@ -4,6 +4,7 @@ import '../models/doctor_model.dart';
 import '../models/patient_model.dart';
 import '../models/medication_model.dart';
 import '../models/appointment_model.dart';
+import '../models/health_alert_model.dart';
 import '../services/gemini_service.dart';
 import '../services/firestore_service.dart';
 import '../services/notification_service.dart';
@@ -134,8 +135,8 @@ class DoctorChatProvider extends ChangeNotifier {
       // Get ALL medications
       final allMeds = await _db.getAllMedications();
 
-      // Filter to ONLY medications prescribed by THIS doctor
-      final myMeds = allMeds.where((m) => m.prescribedBy == _doctor!.id).toList();
+      // FIX: use doctorId (the correct field name on Medication model)
+      final myMeds = allMeds.where((m) => m.doctorId == _doctor!.id).toList();
 
       // Get unique patient IDs from my prescriptions
       final patientIds = myMeds.map((m) => m.patientId).toSet().toList();
@@ -325,14 +326,11 @@ class DoctorChatProvider extends ChangeNotifier {
       report.writeln('');
     }
 
-    // Check for recent alerts
+    // FIX: use getRecentAlertsForDoctor (correct method name on FirestoreService)
     try {
-      final alerts = await _db.getHealthAlertsForDoctor(_doctor!.id);
-      final recent = alerts.where((a) =>
-          a.createdAt.isAfter(DateTime.now().subtract(const Duration(hours: 24)))).toList();
-
-      if (recent.isNotEmpty) {
-        report.writeln('\n🚨 **Recent Alerts (24h)**: ${recent.length}');
+      final alerts = await _db.getRecentAlertsForDoctor(_doctor!.id);
+      if (alerts.isNotEmpty) {
+        report.writeln('\n🚨 **Recent Alerts (24h)**: ${alerts.length}');
         report.writeln('Use "Review recent alerts" to see details.');
       }
     } catch (_) {}
@@ -348,12 +346,8 @@ class DoctorChatProvider extends ChangeNotifier {
     if (_doctor == null) return 'No doctor context available.';
 
     try {
-      final alerts = await _db.getHealthAlertsForDoctor(_doctor!.id);
-
-      // SPEC: Filter to last 24 hours
-      final now = DateTime.now();
-      final recent = alerts.where((a) =>
-          a.createdAt.isAfter(now.subtract(const Duration(hours: 24)))).toList();
+      // FIX: use getRecentAlertsForDoctor (correct method name on FirestoreService)
+      final recent = await _db.getRecentAlertsForDoctor(_doctor!.id);
 
       // SPEC: If no alerts → "No recent alerts."
       if (recent.isEmpty) {
@@ -442,7 +436,6 @@ class DoctorChatProvider extends ChangeNotifier {
     if (_doctor == null) return;
 
     try {
-      // Create inbox message
       await _db.createPatientInboxMessage(
         patientId: patient.id,
         message: '👨‍⚕️ Dr. ${_doctor!.name} is checking on you: "How are you feeling today?"',
@@ -450,7 +443,6 @@ class DoctorChatProvider extends ChangeNotifier {
         doctorId: _doctor!.id,
       );
 
-      // Send notification
       await InboxService.sendDoctorMessage(
         userId: patient.id,
         doctorName: _doctor!.name,
@@ -498,7 +490,6 @@ class DoctorChatProvider extends ChangeNotifier {
     }
 
     try {
-      // SPEC: Notification must include button to open calendar
       await _db.createPatientInboxMessage(
         patientId: target.id,
         message: '📅 Dr. ${_doctor!.name} requests an appointment: $message\n\n'
@@ -519,7 +510,6 @@ class DoctorChatProvider extends ChangeNotifier {
         title: '📅 Appointment Request — Dr. ${_doctor!.name}',
         body: message,
         channel: 'careloop_queue',
-        // In a real app, this would trigger opening the calendar UI
       );
 
       debugPrint('✅ Sent appointment request to ${target.name} with calendar button');
