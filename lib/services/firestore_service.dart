@@ -5,6 +5,8 @@ import '../models/queue_model.dart';
 import '../models/medication_model.dart';
 import '../models/checkin_model.dart';
 import '../models/appointment_model.dart';
+// Import health_alert_model for HealthAlert used in health_alerts collection
+import '../models/health_alert_model.dart' as ham;
 
 class FirestoreService {
   final _db = FirebaseFirestore.instance;
@@ -20,10 +22,10 @@ class FirestoreService {
   Future<void> savePatient(PatientModel p) =>
       _db.collection('patients').doc(p.id).set(p.toMap());
 
-  /// Legacy compatibility helper. New doctor-patient relationships come from
-  /// medications.doctorId instead of a static patient assignment.
   Future<void> assignDoctor(String patientId, String doctorId) =>
-      _db.collection('patients').doc(patientId)
+      _db
+          .collection('patients')
+          .doc(patientId)
           .update({'assignedDoctorId': doctorId});
 
   Stream<List<PatientModel>> allPatientsStream() => _db
@@ -52,12 +54,13 @@ class FirestoreService {
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   }
 
-  Stream<List<PatientModel>> doctorPatientsStream(String doctorId) => _db
-      .collection('medications')
-      .where('doctorId', isEqualTo: doctorId)
-      .where('active', isEqualTo: true)
-      .snapshots()
-      .asyncMap((snap) async {
+  Stream<List<PatientModel>> doctorPatientsStream(String doctorId) =>
+      _db
+          .collection('medications')
+          .where('doctorId', isEqualTo: doctorId)
+          .where('active', isEqualTo: true)
+          .snapshots()
+          .asyncMap((snap) async {
         final patientIds = snap.docs
             .map((d) => d.data()['patientId'] as String? ?? '')
             .where((id) => id.isNotEmpty)
@@ -66,12 +69,11 @@ class FirestoreService {
 
         if (patientIds.isEmpty) return <PatientModel>[];
 
-        final patients = await Future.wait(patientIds.map(getPatient));
-        final resolved = patients.whereType<PatientModel>().toList()
-          ..sort(
-            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-          );
-        return resolved;
+        final patients =
+        await Future.wait(patientIds.map(getPatient));
+        return patients.whereType<PatientModel>().toList()
+          ..sort((a, b) =>
+              a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       });
 
   // ─── Doctor ───────────────────────────────────────────────────────────────
@@ -115,7 +117,9 @@ class FirestoreService {
   // ─── Queue ────────────────────────────────────────────────────────────────
 
   Stream<List<QueueEntry>> queueStream(String clinicId) => _db
-      .collection('queues').doc(clinicId).collection('entries')
+      .collection('queues')
+      .doc(clinicId)
+      .collection('entries')
       .orderBy('priority', descending: true)
       .orderBy('joinedAt')
       .snapshots()
@@ -125,7 +129,9 @@ class FirestoreService {
   Future<QueueEntry?> findActiveQueueEntry(
       String clinicId, String patientId) async {
     final snap = await _db
-        .collection('queues').doc(clinicId).collection('entries')
+        .collection('queues')
+        .doc(clinicId)
+        .collection('entries')
         .where('patientId', isEqualTo: patientId)
         .get();
     final active = snap.docs
@@ -136,20 +142,24 @@ class FirestoreService {
   }
 
   Future<QueueEntry> joinQueue({
-    required String       clinicId,
-    required String       patientId,
-    required String       patientName,
+    required String clinicId,
+    required String patientId,
+    required String patientName,
     required List<String> symptoms,
   }) async {
-    final ref   = _db.collection('queues').doc(clinicId).collection('entries').doc();
+    final ref = _db
+        .collection('queues')
+        .doc(clinicId)
+        .collection('entries')
+        .doc();
     final entry = QueueEntry(
-      id:          ref.id,
-      patientId:   patientId,
+      id: ref.id,
+      patientId: patientId,
       patientName: patientName,
-      symptoms:    symptoms,
-      priority:    _calcPriority(symptoms),
-      status:      QueueStatus.waiting,
-      joinedAt:    DateTime.now(),
+      symptoms: symptoms,
+      priority: _calcPriority(symptoms),
+      status: QueueStatus.waiting,
+      joinedAt: DateTime.now(),
     );
     await ref.set(entry.toMap());
     return entry;
@@ -157,23 +167,41 @@ class FirestoreService {
 
   Future<void> updateQueuePriority(
       String clinicId, String entryId, int priority) =>
-      _db.collection('queues').doc(clinicId).collection('entries')
+      _db
+          .collection('queues')
+          .doc(clinicId)
+          .collection('entries')
           .doc(entryId)
-          .update({'priority': priority, 'updatedAt': FieldValue.serverTimestamp()});
+          .update({
+        'priority': priority,
+        'updatedAt': FieldValue.serverTimestamp()
+      });
 
   Future<void> updateQueueStatus(
       String clinicId, String entryId, QueueStatus status) =>
-      _db.collection('queues').doc(clinicId).collection('entries')
+      _db
+          .collection('queues')
+          .doc(clinicId)
+          .collection('entries')
           .doc(entryId)
           .update({'status': status.name});
 
   Future<void> removeQueueEntry(String clinicId, String entryId) =>
-      _db.collection('queues').doc(clinicId).collection('entries')
-          .doc(entryId).delete();
+      _db
+          .collection('queues')
+          .doc(clinicId)
+          .collection('entries')
+          .doc(entryId)
+          .delete();
 
   int _calcPriority(List<String> symptoms) {
-    const urgent = ['chest pain', 'shortness of breath',
-      'difficulty breathing', 'severe pain', 'unconscious'];
+    const urgent = [
+      'chest pain',
+      'shortness of breath',
+      'difficulty breathing',
+      'severe pain',
+      'unconscious'
+    ];
     for (final s in symptoms) {
       if (urgent.any((u) => s.toLowerCase().contains(u))) return 10;
     }
@@ -184,7 +212,7 @@ class FirestoreService {
 
   Future<List<String>> getBookedSlots(String doctorId, DateTime date) async {
     final dateStr = _dateKey(date);
-    final snap    = await _db
+    final snap = await _db
         .collection('appointments')
         .doc(doctorId)
         .collection('slots')
@@ -198,9 +226,9 @@ class FirestoreService {
 
   Future<List<Map<String, dynamic>>> getAvailableSlots(
       String doctorId, DateTime from, int count) async {
-    final schedule  = DoctorSchedule(doctorId: doctorId);
-    final results   = <Map<String, dynamic>>[];
-    var   checkDate = from;
+    final schedule = DoctorSchedule(doctorId: doctorId);
+    final results = <Map<String, dynamic>>[];
+    var checkDate = from;
 
     while (results.length < count) {
       if (schedule.workDays.contains(checkDate.weekday)) {
@@ -219,30 +247,34 @@ class FirestoreService {
   }
 
   Future<AppointmentSlot?> bookAppointment({
-    required String       doctorId,
-    required String       doctorName,
-    required String       patientId,
-    required String       patientName,
-    required DateTime     date,
-    required String       timeSlot,
+    required String doctorId,
+    required String doctorName,
+    required String patientId,
+    required String patientName,
+    required DateTime date,
+    required String timeSlot,
     required List<String> symptoms,
   }) async {
     final dateStr = _dateKey(date);
-    final booked  = await getBookedSlots(doctorId, date);
+    final booked = await getBookedSlots(doctorId, date);
     if (booked.contains(timeSlot)) return null;
 
-    final ref  = _db.collection('appointments').doc(doctorId).collection('slots').doc();
+    final ref = _db
+        .collection('appointments')
+        .doc(doctorId)
+        .collection('slots')
+        .doc();
     final appt = AppointmentSlot(
-      id:          ref.id,
-      doctorId:    doctorId,
-      doctorName:  doctorName,
-      patientId:   patientId,
+      id: ref.id,
+      doctorId: doctorId,
+      doctorName: doctorName,
+      patientId: patientId,
       patientName: patientName,
-      date:        date,
-      timeSlot:    timeSlot,
-      symptoms:    symptoms,
-      status:      AppointmentStatus.confirmed,
-      bookedAt:    DateTime.now(),
+      date: date,
+      timeSlot: timeSlot,
+      symptoms: symptoms,
+      status: AppointmentStatus.confirmed,
+      bookedAt: DateTime.now(),
     );
     final data = appt.toMap()..['dateKey'] = dateStr;
     await ref.set(data);
@@ -250,12 +282,17 @@ class FirestoreService {
   }
 
   Future<void> cancelAppointment(String doctorId, String slotId) =>
-      _db.collection('appointments').doc(doctorId)
-          .collection('slots').doc(slotId)
+      _db
+          .collection('appointments')
+          .doc(doctorId)
+          .collection('slots')
+          .doc(slotId)
           .update({'status': AppointmentStatus.cancelled.name});
 
-  Stream<List<AppointmentSlot>> patientAppointmentsStream(String patientId) =>
-      _db.collectionGroup('slots')
+  Stream<List<AppointmentSlot>> patientAppointmentsStream(
+      String patientId) =>
+      _db
+          .collectionGroup('slots')
           .where('patientId', isEqualTo: patientId)
           .where('status', whereIn: ['pending', 'confirmed'])
           .orderBy('date')
@@ -266,7 +303,9 @@ class FirestoreService {
 
   Stream<List<AppointmentSlot>> doctorDayScheduleStream(
       String doctorId, DateTime date) =>
-      _db.collection('appointments').doc(doctorId)
+      _db
+          .collection('appointments')
+          .doc(doctorId)
           .collection('slots')
           .where('dateKey', isEqualTo: _dateKey(date))
           .where('status', whereIn: ['pending', 'confirmed'])
@@ -279,23 +318,25 @@ class FirestoreService {
   String _dateKey(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  // ─── Health Alerts ────────────────────────────────────────────────────────
+  // ─── Health Alerts — uses health_alert_model.HealthAlert ─────────────────
 
-  Future<String> createHealthAlert(HealthAlert alert) async {
+  /// Creates a health alert. Uses [ham.HealthAlert] from health_alert_model.
+  Future<String> createHealthAlert(ham.HealthAlert alert) async {
     final ref = _db.collection('health_alerts').doc();
     await ref.set(alert.toMap());
 
-    // Also create doctor inbox message
+    // Also create doctor inbox message (uses appointment_model.DoctorInboxMessage)
     await createDoctorInboxMessage(DoctorInboxMessage(
-      id:          '',
-      doctorId:    alert.doctorId,
-      patientId:   alert.patientId,
+      id: '',
+      doctorId: alert.doctorId,
+      patientId: alert.patientId,
       patientName: alert.patientName,
-      message:     '🚨 Health alert (${alert.riskLevel.toUpperCase()} risk): ${alert.message}',
-      type:        'health_alert',
-      alertId:     ref.id,
-      read:        false,
-      createdAt:   DateTime.now(),
+      message:
+      '🚨 Health alert (${alert.riskLevel.toUpperCase()} risk): ${alert.message}',
+      type: 'health_alert',
+      alertId: ref.id,
+      read: false,
+      createdAt: DateTime.now(),
     ));
 
     return ref.id;
@@ -305,33 +346,37 @@ class FirestoreService {
       String alertId, String doctorResponse, String status) =>
       _db.collection('health_alerts').doc(alertId).update({
         'doctorResponse': doctorResponse,
-        'status':         status,
-        'respondedAt':    FieldValue.serverTimestamp(),
+        'status': status,
+        'respondedAt': FieldValue.serverTimestamp(),
       });
 
-  Stream<List<HealthAlert>> doctorAlertsStream(String doctorId) => _db
+  /// Stream of alerts for doctor alerts screen (uses ham.HealthAlert)
+  Stream<List<ham.HealthAlert>> doctorAlertsStream(String doctorId) => _db
       .collection('health_alerts')
       .where('doctorId', isEqualTo: doctorId)
       .orderBy('createdAt', descending: true)
       .limit(50)
       .snapshots()
-      .map((s) =>
-      s.docs.map((d) => HealthAlert.fromMap(d.data(), d.id)).toList());
+      .map((s) => s.docs
+      .map((d) => ham.HealthAlert.fromMap(d.data(), d.id))
+      .toList());
 
-  Future<List<HealthAlert>> getRecentAlertsForDoctor(
-    String doctorId, {
-    Duration within = const Duration(hours: 24),
-  }) async {
+  /// Fetch alerts within [within] duration (default 24 hours)
+  Future<List<ham.HealthAlert>> getRecentAlertsForDoctor(
+      String doctorId, {
+        Duration within = const Duration(hours: 24),
+      }) async {
     final cutoff = DateTime.now().subtract(within);
     final snap = await _db
         .collection('health_alerts')
         .where('doctorId', isEqualTo: doctorId)
-        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
+        .where('createdAt',
+        isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
         .orderBy('createdAt', descending: true)
         .get();
 
     return snap.docs
-        .map((d) => HealthAlert.fromMap(d.data(), d.id))
+        .map((d) => ham.HealthAlert.fromMap(d.data(), d.id))
         .toList();
   }
 
@@ -345,26 +390,34 @@ class FirestoreService {
     return snap.count ?? 0;
   }
 
-  // ─── Doctor Inbox ─────────────────────────────────────────────────────────
+  // ─── Doctor Inbox — uses appointment_model.DoctorInboxMessage ─────────────
 
   Future<void> createDoctorInboxMessage(DoctorInboxMessage msg) async {
-    final ref = _db.collection('doctor_inbox').doc(msg.doctorId)
-        .collection('messages').doc();
+    final ref = _db
+        .collection('doctor_inbox')
+        .doc(msg.doctorId)
+        .collection('messages')
+        .doc();
     await ref.set(msg.toMap());
   }
 
   Stream<List<DoctorInboxMessage>> doctorInboxStream(String doctorId) => _db
-      .collection('doctor_inbox').doc(doctorId)
+      .collection('doctor_inbox')
+      .doc(doctorId)
       .collection('messages')
       .orderBy('createdAt', descending: true)
       .limit(30)
       .snapshots()
-      .map((s) =>
-      s.docs.map((d) => DoctorInboxMessage.fromMap(d.data(), d.id)).toList());
+      .map((s) => s.docs
+      .map((d) => DoctorInboxMessage.fromMap(d.data(), d.id))
+      .toList());
 
   Future<void> markInboxRead(String doctorId, String messageId) =>
-      _db.collection('doctor_inbox').doc(doctorId)
-          .collection('messages').doc(messageId)
+      _db
+          .collection('doctor_inbox')
+          .doc(doctorId)
+          .collection('messages')
+          .doc(messageId)
           .update({'read': true});
 
   // ─── Patient Inbox ────────────────────────────────────────────────────────
@@ -375,18 +428,24 @@ class FirestoreService {
     required String type,
     String? doctorId,
   }) =>
-      _db.collection('patient_inbox').doc(patientId)
-          .collection('messages').add({
+      _db
+          .collection('patient_inbox')
+          .doc(patientId)
+          .collection('messages')
+          .add({
         'patientId': patientId,
-        'message':   message,
-        'type':      type,
-        'doctorId':  doctorId,
-        'read':      false,
+        'message': message,
+        'type': type,
+        'doctorId': doctorId,
+        'read': false,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-  Stream<List<Map<String, dynamic>>> patientInboxStream(String patientId) =>
-      _db.collection('patient_inbox').doc(patientId)
+  Stream<List<Map<String, dynamic>>> patientInboxStream(
+      String patientId) =>
+      _db
+          .collection('patient_inbox')
+          .doc(patientId)
           .collection('messages')
           .orderBy('createdAt', descending: true)
           .limit(20)
@@ -404,8 +463,8 @@ class FirestoreService {
       .map((s) =>
       s.docs.map((d) => Medication.fromMap(d.data(), d.id)).toList());
 
-  /// ✅ One-time fetch of active medications (used by ChatProvider for AI context + med check)
-  Future<List<Medication>> getMedicationsForPatient(String patientId) async {
+  Future<List<Medication>> getMedicationsForPatient(
+      String patientId) async {
     final snap = await _db
         .collection('medications')
         .where('patientId', isEqualTo: patientId)
@@ -417,9 +476,7 @@ class FirestoreService {
   }
 
   Future<List<Medication>> getMedicationsForPatientAndDoctor(
-    String patientId,
-    String doctorId,
-  ) async {
+      String patientId, String doctorId) async {
     final snap = await _db
         .collection('medications')
         .where('patientId', isEqualTo: patientId)
@@ -431,8 +488,10 @@ class FirestoreService {
         .toList();
   }
 
+  /// All active medications — used by DoctorChatProvider to find prescriptions
   Future<List<Medication>> getAllMedications() async {
-    final snap = await _db.collection('medications')
+    final snap = await _db
+        .collection('medications')
         .where('active', isEqualTo: true)
         .get();
     return snap.docs
@@ -441,33 +500,30 @@ class FirestoreService {
   }
 
   Stream<List<Medication>> medicationsStreamForDoctor(
-    String patientId,
-    String doctorId,
-  ) =>
+      String patientId, String doctorId) =>
       _db
           .collection('medications')
           .where('patientId', isEqualTo: patientId)
           .where('doctorId', isEqualTo: doctorId)
           .where('active', isEqualTo: true)
           .snapshots()
-          .map((s) =>
-              s.docs.map((d) => Medication.fromMap(d.data(), d.id)).toList());
+          .map((s) => s.docs
+          .map((d) => Medication.fromMap(d.data(), d.id))
+          .toList());
 
   Future<String> addMedication(Medication med, {String? doctorId}) async {
     final ref = _db.collection('medications').doc();
     await ref.set(Medication(
-      id:            ref.id,
-      patientId:     med.patientId,
-      doctorId:      doctorId ?? med.doctorId,
-      name:          med.name,
-      dosage:        med.dosage,
-      frequency:     med.frequency,
+      id: ref.id,
+      patientId: med.patientId,
+      doctorId: doctorId ?? med.doctorId,
+      name: med.name,
+      dosage: med.dosage,
+      frequency: med.frequency,
       reminderTimes: med.reminderTimes,
-      active:        true,
+      active: true,
     ).toMap());
 
-    // Keep legacy field in sync for older flows, but active relationship logic
-    // should read from medications.doctorId.
     if (doctorId != null && doctorId.isNotEmpty) {
       await assignDoctor(med.patientId, doctorId);
     }
@@ -476,7 +532,10 @@ class FirestoreService {
   }
 
   Future<void> deactivateMedication(String medId) =>
-      _db.collection('medications').doc(medId).update({'active': false});
+      _db
+          .collection('medications')
+          .doc(medId)
+          .update({'active': false});
 
   Future<void> logDoseForSlot(
       String medicationId, String timeSlot, bool taken) async {
@@ -484,7 +543,7 @@ class FirestoreService {
     if (taken) {
       await _db.collection('medications').doc(medicationId).update({
         'takenSlots': FieldValue.arrayUnion([slotKey]),
-        'lastTaken':  FieldValue.serverTimestamp(),
+        'lastTaken': FieldValue.serverTimestamp(),
       });
     } else {
       await _db.collection('medications').doc(medicationId).update({
@@ -493,21 +552,23 @@ class FirestoreService {
     }
     await _db.collection('dose_logs').add({
       'medicationId': medicationId,
-      'timeSlot':     timeSlot,
-      'slotKey':      slotKey,
-      'taken':        taken,
-      'timestamp':    FieldValue.serverTimestamp(),
+      'timeSlot': timeSlot,
+      'slotKey': slotKey,
+      'taken': taken,
+      'timestamp': FieldValue.serverTimestamp(),
     });
   }
 
   Future<void> logDose(String medicationId, bool taken) async {
     await _db.collection('dose_logs').add({
       'medicationId': medicationId,
-      'taken':        taken,
-      'timestamp':    FieldValue.serverTimestamp(),
+      'taken': taken,
+      'timestamp': FieldValue.serverTimestamp(),
     });
     if (taken) {
-      await _db.collection('medications').doc(medicationId)
+      await _db
+          .collection('medications')
+          .doc(medicationId)
           .update({'lastTaken': FieldValue.serverTimestamp()});
     }
   }
@@ -527,10 +588,10 @@ class FirestoreService {
   }) =>
       _db.collection('alerts').add({
         'patientId': patientId,
-        'type':      type,
-        'message':   message,
-        'clinicId':  clinicId,
-        'resolved':  false,
+        'type': type,
+        'message': message,
+        'clinicId': clinicId,
+        'resolved': false,
         'createdAt': FieldValue.serverTimestamp(),
       });
 }

@@ -19,12 +19,13 @@ class InboxService extends ChangeNotifier {
   int get unreadCount => _unreadCount;
   bool get hasUnread => _unreadCount > 0;
 
-  // Start listening to notifications for a user
+  // ── Start listening ───────────────────────────────────────────────────────
+
   void startListening(String userId) {
     if (_currentUserId == userId) return;
     _currentUserId = userId;
 
-    print('🔔 InboxService: Starting listener for user $userId'); // ← ADD THIS
+    debugPrint('🔔 InboxService: Starting listener for user $userId');
 
     _firestore
         .collection('notifications')
@@ -33,7 +34,8 @@ class InboxService extends ChangeNotifier {
         .limit(100)
         .snapshots()
         .listen((snapshot) {
-      print('🔔 InboxService: Received ${snapshot.docs.length} notifications'); // ← ADD THIS
+      debugPrint(
+          '🔔 InboxService: Received ${snapshot.docs.length} notifications');
 
       _notifications = snapshot.docs
           .map((doc) => NotificationModel.fromFirestore(doc))
@@ -41,12 +43,11 @@ class InboxService extends ChangeNotifier {
 
       _unreadCount = _notifications.where((n) => !n.isRead).length;
 
-      print('🔔 InboxService: Unread count = $_unreadCount'); // ← ADD THIS
+      debugPrint('🔔 InboxService: Unread count = $_unreadCount');
       notifyListeners();
     });
   }
 
-  // Stop listening
   void stopListening() {
     _currentUserId = null;
     _notifications = [];
@@ -54,7 +55,8 @@ class InboxService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Mark notification as read
+  // ── CRUD ──────────────────────────────────────────────────────────────────
+
   Future<void> markAsRead(String notificationId) async {
     try {
       await _firestore
@@ -66,10 +68,8 @@ class InboxService extends ChangeNotifier {
     }
   }
 
-  // Mark all as read
   Future<void> markAllAsRead() async {
     if (_currentUserId == null) return;
-
     try {
       final batch = _firestore.batch();
       final unreadDocs = await _firestore
@@ -77,18 +77,15 @@ class InboxService extends ChangeNotifier {
           .where('userId', isEqualTo: _currentUserId)
           .where('isRead', isEqualTo: false)
           .get();
-
       for (var doc in unreadDocs.docs) {
         batch.update(doc.reference, {'isRead': true});
       }
-
       await batch.commit();
     } catch (e) {
       debugPrint('Error marking all as read: $e');
     }
   }
 
-  // Delete notification
   Future<void> deleteNotification(String notificationId) async {
     try {
       await _firestore
@@ -100,21 +97,17 @@ class InboxService extends ChangeNotifier {
     }
   }
 
-  // Clear all notifications
   Future<void> clearAll() async {
     if (_currentUserId == null) return;
-
     try {
       final batch = _firestore.batch();
       final docs = await _firestore
           .collection('notifications')
           .where('userId', isEqualTo: _currentUserId)
           .get();
-
       for (var doc in docs.docs) {
         batch.delete(doc.reference);
       }
-
       await batch.commit();
     } catch (e) {
       debugPrint('Error clearing notifications: $e');
@@ -122,10 +115,10 @@ class InboxService extends ChangeNotifier {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // CREATE NOTIFICATIONS (Called from various parts of the app)
+  // CREATE NOTIFICATIONS
   // ══════════════════════════════════════════════════════════════════════════
 
-  /// Send appointment notification
+  /// Appointment confirmed — navigates to appointment details
   static Future<void> sendAppointmentNotification({
     required String userId,
     required String doctorName,
@@ -146,11 +139,10 @@ class InboxService extends ChangeNotifier {
         'appointmentTime': appointmentTime.toIso8601String(),
       },
     );
-
     await _saveAndNotify(notification);
   }
 
-  /// Send appointment request notification
+  /// Appointment REQUEST from doctor — includes action to open calendar
   static Future<void> sendAppointmentRequestNotification({
     required String userId,
     required String doctorName,
@@ -160,20 +152,19 @@ class InboxService extends ChangeNotifier {
       id: '',
       userId: userId,
       title: '📅 Appointment Request from Dr. $doctorName',
-      message: message,
+      message: '$message\n\nTap to open calendar and book.',
       type: NotificationType.appointment,
       timestamp: DateTime.now(),
       metadata: {
         'doctorName': doctorName,
         'requestMessage': message,
-        'requestType': 'appointment',
+        'action': 'open_appointments', // triggers calendar navigation in InboxScreen
       },
     );
-
     await _saveAndNotify(notification);
   }
 
-  /// Send medication reminder (5 min late)
+  /// Medication reminder (5 min late) — navigates to meds screen
   static Future<void> sendMedicationReminder({
     required String userId,
     required String medicationName,
@@ -184,8 +175,8 @@ class InboxService extends ChangeNotifier {
       id: '',
       userId: userId,
       title: '💊 Missed Medication',
-      message: 'You\'re 5 minutes late for $medicationName ($dosage). '
-          'Please take it now!',
+      message:
+      'You\'re 5 minutes late for $medicationName ($dosage). Please take it now!',
       type: NotificationType.medication,
       timestamp: DateTime.now(),
       metadata: {
@@ -194,14 +185,13 @@ class InboxService extends ChangeNotifier {
         'dosage': dosage,
       },
     );
-
     await _saveAndNotify(notification);
 
     // Also trigger OS notification
     await NotificationService.showMedicationReminder(medicationName, dosage);
   }
 
-  /// Send queue update notification
+  /// Queue update — navigates to queue or appointments screen
   static Future<void> sendQueueNotification({
     required String userId,
     required String message,
@@ -216,17 +206,15 @@ class InboxService extends ChangeNotifier {
       timestamp: DateTime.now(),
       metadata: {'isUrgent': isUrgent},
     );
-
     await _saveAndNotify(notification);
 
-    // Also trigger OS notification
     await NotificationService.showQueueStatusNotification(
       title: notification.title,
       body: message,
     );
   }
 
-  /// Send doctor message notification
+  /// Doctor message / response — navigates to AI chat or appointments
   static Future<void> sendDoctorMessage({
     required String userId,
     required String doctorName,
@@ -245,16 +233,14 @@ class InboxService extends ChangeNotifier {
         ...?metadata,
       },
     );
-
     await _saveAndNotify(notification);
 
-    // Also trigger OS notification
     await NotificationService.showHealthAlert(
       '👨‍⚕️ Dr. $doctorName: $message',
     );
   }
 
-  /// Send general notification
+  /// General notification
   static Future<void> sendGeneralNotification({
     required String userId,
     required String title,
@@ -268,21 +254,18 @@ class InboxService extends ChangeNotifier {
       type: NotificationType.general,
       timestamp: DateTime.now(),
     );
-
     await _saveAndNotify(notification);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // HELPER METHODS
+  // HELPERS
   // ══════════════════════════════════════════════════════════════════════════
 
   static Future<void> _saveAndNotify(NotificationModel notification) async {
     try {
-      // Save to Firestore
       await FirebaseFirestore.instance
           .collection('notifications')
           .add(notification.toFirestore());
-
       debugPrint('✅ Notification saved: ${notification.title}');
     } catch (e) {
       debugPrint('❌ Error saving notification: $e');
@@ -290,12 +273,14 @@ class InboxService extends ChangeNotifier {
   }
 
   static String _formatDateTime(DateTime dt) {
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+    final months = [
+      'Jan','Feb','Mar','Apr','May','Jun',
+      'Jul','Aug','Sep','Oct','Nov','Dec'
+    ];
+    final hour =
+    dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
     final period = dt.hour >= 12 ? 'PM' : 'AM';
     final minute = dt.minute.toString().padLeft(2, '0');
-
     return '${months[dt.month - 1]} ${dt.day}, ${dt.year} at $hour:$minute $period';
   }
 }

@@ -31,7 +31,7 @@ class DoctorChatMessage {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// DOCTOR CHAT PROVIDER - SPECIFICATION-COMPLIANT
+// DOCTOR CHAT PROVIDER
 // ═══════════════════════════════════════════════════════════════════════════
 
 class DoctorChatProvider extends ChangeNotifier {
@@ -43,9 +43,8 @@ class DoctorChatProvider extends ChangeNotifier {
   bool _sessionReady = false;
   DoctorModel? _doctor;
 
-  // SPEC: Only patients THIS doctor has prescribed to
   List<PatientModel> _myPatients = [];
-  Map<String, List<Medication>> _myPrescriptions = {}; // patientId -> my prescriptions
+  Map<String, List<Medication>> _myPrescriptions = {};
 
   List<DoctorChatMessage> get messages => _messages;
   bool get thinking => _thinking;
@@ -53,7 +52,7 @@ class DoctorChatProvider extends ChangeNotifier {
   List<PatientModel> get myPatients => _myPatients;
 
   // ══════════════════════════════════════════════════════════════════════════
-  // SESSION INITIALIZATION - SPEC COMPLIANT
+  // SESSION INITIALIZATION
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> initSession(DoctorModel doctor) async {
@@ -61,7 +60,6 @@ class DoctorChatProvider extends ChangeNotifier {
     _doctor = doctor;
 
     try {
-      // SPEC: Get ONLY patients this doctor has prescribed medication to
       await _loadMyPatients();
 
       final summaries = _myPatients
@@ -95,10 +93,8 @@ class DoctorChatProvider extends ChangeNotifier {
         ));
 
         debugPrint('✅ Doctor AI: Session initialized successfully');
-
       } catch (e) {
         debugPrint('❌ Doctor AI: Gemini initialization failed: $e');
-
         _sessionReady = true;
         _messages.add(DoctorChatMessage(
           text: '⚠️ **AI Connection Issue**\n\n'
@@ -111,15 +107,12 @@ class DoctorChatProvider extends ChangeNotifier {
           isDoctor: false,
         ));
       }
-
     } catch (e) {
       debugPrint('❌ Doctor AI: Failed to load patients: $e');
-
       _sessionReady = true;
       _messages.add(DoctorChatMessage(
         text: '⚠️ **Database Connection Issue**\n\n'
-            'I couldn\'t load your patient list.\n\n'
-            'Error: $e',
+            'I couldn\'t load your patient list.\n\nError: $e',
         isDoctor: false,
       ));
     }
@@ -127,21 +120,16 @@ class DoctorChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// SPEC: Load ONLY patients this doctor has prescribed medication to
   Future<void> _loadMyPatients() async {
     if (_doctor == null) return;
 
     try {
-      // Get ALL medications
       final allMeds = await _db.getAllMedications();
-
-      // FIX: use doctorId (the correct field name on Medication model)
-      final myMeds = allMeds.where((m) => m.doctorId == _doctor!.id).toList();
-
-      // Get unique patient IDs from my prescriptions
+      // FIX: use doctorId field
+      final myMeds =
+      allMeds.where((m) => m.doctorId == _doctor!.id).toList();
       final patientIds = myMeds.map((m) => m.patientId).toSet().toList();
 
-      // Load those patients
       _myPatients = [];
       _myPrescriptions = {};
 
@@ -150,17 +138,14 @@ class DoctorChatProvider extends ChangeNotifier {
           final patient = await _db.getPatient(patientId);
           if (patient != null) {
             _myPatients.add(patient);
-
-            // Store MY prescriptions for this patient
-            _myPrescriptions[patientId] = myMeds
-                .where((m) => m.patientId == patientId)
-                .toList();
+            _myPrescriptions[patientId] =
+                myMeds.where((m) => m.patientId == patientId).toList();
           }
         } catch (_) {}
       }
 
-      debugPrint('✅ Loaded ${_myPatients.length} patients via ${myMeds.length} prescriptions');
-
+      debugPrint(
+          '✅ Loaded ${_myPatients.length} patients via ${myMeds.length} prescriptions');
     } catch (e) {
       debugPrint('❌ Error loading patients: $e');
       _myPatients = [];
@@ -184,9 +169,8 @@ class DoctorChatProvider extends ChangeNotifier {
 
   Future<void> sendMessageWithImage(
       String text, Uint8List imageBytes, String mimeType) async {
-    final displayText = text.isEmpty
-        ? '📷 [Medical image sent for analysis]'
-        : text;
+    final displayText =
+    text.isEmpty ? '📷 [Medical image sent for analysis]' : text;
     _messages.add(DoctorChatMessage(
       text: displayText,
       isDoctor: true,
@@ -205,10 +189,11 @@ class DoctorChatProvider extends ChangeNotifier {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // PROCESS RESPONSE - ALL 4 SPEC FEATURES
+  // PROCESS RESPONSE
   // ══════════════════════════════════════════════════════════════════════════
 
-  Future<void> _processResponse(GeminiResponse response, String query) async {
+  Future<void> _processResponse(
+      GeminiResponse response, String query) async {
     String displayMsg = response.message;
 
     if (response.isError) {
@@ -222,52 +207,41 @@ class DoctorChatProvider extends ChangeNotifier {
       return;
     }
 
-    // ────────────────────────────────────────────────────────────────────────
     // SPEC FEATURE 1: How Are My Patients Today?
-    // ────────────────────────────────────────────────────────────────────────
     if (response.actions.contains('review_my_patients') ||
         query.toLowerCase().contains('how are my patients') ||
-        query.toLowerCase().contains('patient status')) {
+        query.toLowerCase().contains('patient status') ||
+        query.toLowerCase().contains('my patients today')) {
       displayMsg = await _handleHowAreMyPatients();
     }
 
-    // ────────────────────────────────────────────────────────────────────────
     // SPEC FEATURE 4: Review Recent Alerts (last 24 hours)
-    // ────────────────────────────────────────────────────────────────────────
     if (response.actions.contains('review_recent_alerts') ||
         query.toLowerCase().contains('recent alert') ||
         query.toLowerCase().contains('review alert')) {
       displayMsg = await _handleReviewRecentAlerts();
     }
 
-    // ────────────────────────────────────────────────────────────────────────
     // SPEC FEATURE 2: Check Patient Status
-    // ────────────────────────────────────────────────────────────────────────
     if (response.actions.contains('check_patient_status')) {
-      displayMsg = await _handleCheckPatientStatus(
-          response.patientId, query);
+      displayMsg =
+      await _handleCheckPatientStatus(response.patientId, query);
     }
 
-    // ────────────────────────────────────────────────────────────────────────
     // SPEC FEATURE 3: Send Appointment Request (with calendar button)
-    // ────────────────────────────────────────────────────────────────────────
     if (response.actions.contains('send_appointment_request') &&
         response.sendToPatient != null) {
       await _handleSendAppointmentRequest(
-        response.patientId,
-        response.sendToPatient!,
-      );
-      displayMsg = '$displayMsg\n\n✅ Appointment request sent with calendar button.';
+          response.patientId, response.sendToPatient!);
+      displayMsg =
+      '$displayMsg\n\n✅ Appointment request sent with calendar button.';
     }
 
-    // ── Send patient message ──────────────────────────────────────────────
+    // Send patient message
     if (response.actions.contains('send_patient_message') &&
         response.sendToPatient != null) {
       await _handleSendToPatient(
-        response.patientId,
-        response.sendToPatient!,
-        'doctor_note',
-      );
+          response.patientId, response.sendToPatient!, 'doctor_note');
       displayMsg = '$displayMsg\n\n✅ Message delivered to patient.';
     }
 
@@ -291,30 +265,37 @@ class DoctorChatProvider extends ChangeNotifier {
       return 'You don\'t have any patients yet. Patients will appear here once you prescribe medications to them.';
     }
 
+    // Refresh patient data for latest adherence
+    await _loadMyPatients();
+
     final report = StringBuffer();
     report.writeln('📊 **Patient Status Report**\n');
-    report.writeln('You have ${_myPatients.length} patient(s) via prescriptions:\n');
+    report.writeln(
+        'You have ${_myPatients.length} patient(s) via prescriptions:\n');
 
     for (final patient in _myPatients) {
       report.writeln('━━━━━━━━━━━━━━━━━━━━');
       report.writeln('👤 **${patient.name}**');
-      report.writeln('📋 Diagnosis: ${patient.diagnosis ?? "Not recorded"}');
+      report.writeln(
+          '📋 Diagnosis: ${patient.diagnosis ?? "Not recorded"}');
 
-      // SPEC: Show medication adherence for ONLY THIS doctor's prescriptions
       final myMeds = _myPrescriptions[patient.id] ?? [];
 
       if (myMeds.isEmpty) {
         report.writeln('💊 No active prescriptions from you');
       } else {
-        final taken = myMeds.where((m) => m.isTakenToday).length;
-        final total = myMeds.where((m) => m.active).length;
-        final adherenceRate = total > 0 ? (taken / total * 100).toStringAsFixed(0) : '0';
+        final activeMeds = myMeds.where((m) => m.active).toList();
+        final takenCount = activeMeds.where((m) => m.isTakenToday).length;
+        final total = activeMeds.length;
+        final adherenceRate =
+        total > 0 ? (takenCount / total * 100).toStringAsFixed(0) : '0';
 
         report.writeln('💊 **Your Prescriptions**: $total medication(s)');
-        report.writeln('✅ **Adherence**: $taken/$total taken today ($adherenceRate%)');
+        report.writeln(
+            '✅ **Adherence**: $takenCount/$total taken today ($adherenceRate%)');
 
-        // Show missed medications (YOUR prescriptions only)
-        final missed = myMeds.where((m) => m.active && !m.isTakenToday).toList();
+        final missed =
+        activeMeds.where((m) => !m.isTakenToday).toList();
         if (missed.isNotEmpty) {
           report.writeln('⚠️ **Missed Today**:');
           for (final med in missed) {
@@ -326,12 +307,15 @@ class DoctorChatProvider extends ChangeNotifier {
       report.writeln('');
     }
 
-    // FIX: use getRecentAlertsForDoctor (correct method name on FirestoreService)
+    // FIX: use getRecentAlertsForDoctor
     try {
-      final alerts = await _db.getRecentAlertsForDoctor(_doctor!.id);
+      final alerts =
+      await _db.getRecentAlertsForDoctor(_doctor!.id);
       if (alerts.isNotEmpty) {
         report.writeln('\n🚨 **Recent Alerts (24h)**: ${alerts.length}');
         report.writeln('Use "Review recent alerts" to see details.');
+      } else {
+        report.writeln('\n✅ No recent alerts in the last 24 hours.');
       }
     } catch (_) {}
 
@@ -346,15 +330,13 @@ class DoctorChatProvider extends ChangeNotifier {
     if (_doctor == null) return 'No doctor context available.';
 
     try {
-      // FIX: use getRecentAlertsForDoctor (correct method name on FirestoreService)
+      // FIX: use getRecentAlertsForDoctor (correct method on FirestoreService)
       final recent = await _db.getRecentAlertsForDoctor(_doctor!.id);
 
-      // SPEC: If no alerts → "No recent alerts."
       if (recent.isEmpty) {
         return '✅ **No recent alerts.**\n\nAll your patients are doing well!';
       }
 
-      // SPEC: If alerts exist → Display them
       final report = StringBuffer();
       report.writeln('🚨 **Recent Alerts (Last 24 Hours)**\n');
       report.writeln('Found ${recent.length} alert(s):\n');
@@ -367,11 +349,13 @@ class DoctorChatProvider extends ChangeNotifier {
         report.writeln('⚠️ Risk: ${alert.riskLevel.toUpperCase()}');
         report.writeln('💬 Message: ${alert.message}');
         report.writeln('📊 Status: ${alert.status}');
+        if (alert.doctorResponse != null) {
+          report.writeln('💬 Your response: ${alert.doctorResponse}');
+        }
         report.writeln('');
       }
 
       return report.toString();
-
     } catch (e) {
       debugPrint('❌ Error loading alerts: $e');
       return '❌ Unable to load recent alerts. Please try again.';
@@ -380,42 +364,21 @@ class DoctorChatProvider extends ChangeNotifier {
 
   String _getTimeAgo(DateTime dateTime) {
     final diff = DateTime.now().difference(dateTime);
-
-    if (diff.inMinutes < 60) {
-      return '${diff.inMinutes} minute(s) ago';
-    } else if (diff.inHours < 24) {
-      return '${diff.inHours} hour(s) ago';
-    } else {
-      return '${diff.inDays} day(s) ago';
-    }
+    if (diff.inMinutes < 60) return '${diff.inMinutes} minute(s) ago';
+    if (diff.inHours < 24) return '${diff.inHours} hour(s) ago';
+    return '${diff.inDays} day(s) ago';
   }
 
   // ══════════════════════════════════════════════════════════════════════════
   // SPEC FEATURE 2: CHECK PATIENT STATUS
+  // Sends "How are you feeling today?" notification to patient
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<String> _handleCheckPatientStatus(
       String? patientIdHint, String query) async {
     if (_doctor == null) return 'No doctor context available.';
 
-    PatientModel? target;
-    if (patientIdHint != null && patientIdHint.isNotEmpty) {
-      try {
-        target = _myPatients.firstWhere(
-                (p) => p.id == patientIdHint ||
-                p.name.toLowerCase().contains(patientIdHint.toLowerCase()));
-      } catch (_) {}
-    }
-
-    if (target == null && _myPatients.isNotEmpty) {
-      for (final p in _myPatients) {
-        final first = p.name.split(' ').first.toLowerCase();
-        if (query.toLowerCase().contains(first)) {
-          target = p;
-          break;
-        }
-      }
-    }
+    PatientModel? target = _findPatient(patientIdHint, query);
 
     if (target == null) {
       final names = _myPatients.isEmpty
@@ -425,7 +388,6 @@ class DoctorChatProvider extends ChangeNotifier {
           'Your patients (via prescriptions): $names. Could you specify?';
     }
 
-    // SPEC: Send notification to patient: "How are you feeling today?"
     await _sendCheckStatusNotification(target);
 
     return 'I\'ve sent a notification to **${target.name}** asking: "How are you feeling today?"\n\n'
@@ -438,7 +400,8 @@ class DoctorChatProvider extends ChangeNotifier {
     try {
       await _db.createPatientInboxMessage(
         patientId: patient.id,
-        message: '👨‍⚕️ Dr. ${_doctor!.name} is checking on you: "How are you feeling today?"',
+        message:
+        '👨‍⚕️ Dr. ${_doctor!.name} is checking on you: "How are you feeling today?"',
         type: 'doctor_check',
         doctorId: _doctor!.id,
       );
@@ -447,6 +410,7 @@ class DoctorChatProvider extends ChangeNotifier {
         userId: patient.id,
         doctorName: _doctor!.name,
         message: 'How are you feeling today?',
+        metadata: {'action': 'doctor_check', 'doctorId': _doctor!.id},
       );
 
       await NotificationService.sendPushToUser(
@@ -457,10 +421,11 @@ class DoctorChatProvider extends ChangeNotifier {
         channel: 'careloop_queue',
       );
 
-      debugPrint('✅ Sent check status notification to ${patient.name}');
-
+      debugPrint(
+          '✅ Sent check status notification to ${patient.name}');
     } catch (e) {
-      debugPrint('❌ Error sending check status notification: $e');
+      debugPrint(
+          '❌ Error sending check status notification: $e');
     }
   }
 
@@ -469,20 +434,11 @@ class DoctorChatProvider extends ChangeNotifier {
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _handleSendAppointmentRequest(
-      String? patientIdHint,
-      String message,
-      ) async {
+      String? patientIdHint, String message) async {
     if (_doctor == null) return;
 
-    PatientModel? target;
-    if (patientIdHint != null) {
-      try {
-        target = _myPatients.firstWhere(
-                (p) => p.id == patientIdHint ||
-                p.name.toLowerCase().contains(patientIdHint.toLowerCase()));
-      } catch (_) {}
-    }
-    target ??= _myPatients.isNotEmpty ? _myPatients.first : null;
+    final target = _findPatient(patientIdHint, '') ??
+        (_myPatients.isNotEmpty ? _myPatients.first : null);
 
     if (target == null) {
       debugPrint('❌ No target patient found for appointment request');
@@ -490,6 +446,7 @@ class DoctorChatProvider extends ChangeNotifier {
     }
 
     try {
+      // Notification must include hint to open calendar (action metadata)
       await _db.createPatientInboxMessage(
         patientId: target.id,
         message: '📅 Dr. ${_doctor!.name} requests an appointment: $message\n\n'
@@ -512,8 +469,8 @@ class DoctorChatProvider extends ChangeNotifier {
         channel: 'careloop_queue',
       );
 
-      debugPrint('✅ Sent appointment request to ${target.name} with calendar button');
-
+      debugPrint(
+          '✅ Sent appointment request to ${target.name} with calendar button');
     } catch (e) {
       debugPrint('❌ Error sending appointment request: $e');
     }
@@ -524,21 +481,11 @@ class DoctorChatProvider extends ChangeNotifier {
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _handleSendToPatient(
-      String? patientIdHint,
-      String message,
-      String type,
-      ) async {
+      String? patientIdHint, String message, String type) async {
     if (_doctor == null) return;
 
-    PatientModel? target;
-    if (patientIdHint != null) {
-      try {
-        target = _myPatients.firstWhere(
-                (p) => p.id == patientIdHint ||
-                p.name.toLowerCase().contains(patientIdHint.toLowerCase()));
-      } catch (_) {}
-    }
-    target ??= _myPatients.isNotEmpty ? _myPatients.first : null;
+    final target = _findPatient(patientIdHint, '') ??
+        (_myPatients.isNotEmpty ? _myPatients.first : null);
 
     if (target == null) {
       debugPrint('❌ No target patient found');
@@ -568,10 +515,34 @@ class DoctorChatProvider extends ChangeNotifier {
       );
 
       debugPrint('✅ Sent message to patient ${target.name}');
-
     } catch (e) {
       debugPrint('❌ Error sending message to patient: $e');
     }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // HELPER: Find patient by hint or query
+  // ══════════════════════════════════════════════════════════════════════════
+
+  PatientModel? _findPatient(String? hint, String query) {
+    if (hint != null && hint.isNotEmpty) {
+      try {
+        return _myPatients.firstWhere((p) =>
+        p.id == hint ||
+            p.name.toLowerCase().contains(hint.toLowerCase()));
+      } catch (_) {}
+    }
+
+    if (query.isNotEmpty) {
+      for (final p in _myPatients) {
+        final first = p.name.split(' ').first.toLowerCase();
+        if (query.toLowerCase().contains(first)) {
+          return p;
+        }
+      }
+    }
+
+    return null;
   }
 
   // ══════════════════════════════════════════════════════════════════════════

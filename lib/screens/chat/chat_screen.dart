@@ -36,7 +36,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _scrollCtrl.animateTo(
         _scrollCtrl.position.maxScrollExtent,
         duration: const Duration(milliseconds: 300),
-        curve:    Curves.easeOut,
+        curve: Curves.easeOut,
       );
     }
   }
@@ -197,7 +197,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         .fadeIn(duration: 250.ms)
                         .slideY(begin: 0.12),
 
-                    // Feature 1: Calendar picker
+                    // ── Step 1: Date calendar ──────────────────────────
                     if (!msg.isUser && msg.showCalendarPicker)
                       Padding(
                         padding: const EdgeInsets.only(left: 38, bottom: 8),
@@ -210,14 +210,33 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
 
-                    // Feature 4: Document analysis
+                    // ── Step 2: Time slot picker ───────────────────────
+                    if (!msg.isUser && msg.showTimeSlotPicker &&
+                        msg.slotDate != null && msg.slotDoctor != null)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 38, bottom: 8),
+                        child: _TimeSlotPicker(
+                          date: msg.slotDate!,
+                          availableSlots: msg.availableSlots,
+                          doctor: msg.slotDoctor!,
+                          symptoms: msg.appointmentSymptoms,
+                          onSlotSelected: (date, slot, doctor) {
+                            context
+                                .read<ChatProvider>()
+                                .onTimeSlotSelected(date, slot, doctor);
+                            _delayScroll();
+                          },
+                        ),
+                      ),
+
+                    // ── Document analysis ─────────────────────────────
                     if (!msg.isUser && msg.documentAnalysis != null)
                       Padding(
                         padding: const EdgeInsets.only(left: 38, bottom: 8),
                         child: _DocAnalysisCard(analysis: msg.documentAnalysis!),
                       ),
 
-                    // Feature 3: Medication status
+                    // ── Medication status ─────────────────────────────
                     if (!msg.isUser && msg.medicationStatus != null)
                       Padding(
                         padding: const EdgeInsets.only(left: 38, bottom: 8),
@@ -242,7 +261,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-// ─── Feature 1: Calendar Picker ───────────────────────────────────────────────
+// ─── Step 1: Calendar Picker ──────────────────────────────────────────────────
 
 class _CalendarPicker extends StatelessWidget {
   final List<String>       symptoms;
@@ -291,7 +310,7 @@ class _CalendarPicker extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                             fontSize: 14,
                             color: const Color(0xFF0D1B2A))),
-                    Text('I\'ll auto-book the earliest available slot',
+                    Text('I\'ll show available time slots for the selected day',
                         style: GoogleFonts.dmSans(
                             fontSize: 11, color: const Color(0xFF667085))),
                   ],
@@ -300,7 +319,6 @@ class _CalendarPicker extends StatelessWidget {
             ],
           ),
 
-          // Reason tag
           if (symptoms.isNotEmpty) ...[
             const SizedBox(height: 10),
             Container(
@@ -327,7 +345,6 @@ class _CalendarPicker extends StatelessWidget {
 
           const SizedBox(height: 14),
 
-          // Date grid — 14 days (weekdays only tappable)
           GridView.builder(
             shrinkWrap: true,
             physics:    const NeverScrollableScrollPhysics(),
@@ -352,7 +369,7 @@ class _CalendarPicker extends StatelessWidget {
           ),
 
           const SizedBox(height: 8),
-          Text('🏥 Weekends closed · Earliest available slot auto-booked',
+          Text('🏥 Weekends closed · Tap a weekday to see available slots',
               style: GoogleFonts.dmSans(
                   fontSize: 10, color: const Color(0xFF667085))),
         ],
@@ -439,7 +456,160 @@ class _DateCellState extends State<_DateCell> {
   }
 }
 
-// ─── Feature 4: Document Analysis Card ───────────────────────────────────────
+// ─── Step 2: Time Slot Picker ─────────────────────────────────────────────────
+
+class _TimeSlotPicker extends StatelessWidget {
+  final DateTime date;
+  final List<String> availableSlots;
+  final dynamic doctor; // DoctorModel
+  final List<String> symptoms;
+  final Function(DateTime, String, dynamic) onSlotSelected;
+
+  const _TimeSlotPicker({
+    required this.date,
+    required this.availableSlots,
+    required this.doctor,
+    required this.symptoms,
+    required this.onSlotSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin:  const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color:        Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF00C896).withOpacity(0.3)),
+        boxShadow: [BoxShadow(
+            color: const Color(0xFF00C896).withOpacity(0.07),
+            blurRadius: 16, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00C896).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.access_time_rounded,
+                    color: Color(0xFF00C896), size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Choose a Time Slot',
+                        style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                            color: const Color(0xFF0D1B2A))),
+                    Text(
+                      '${availableSlots.length} slot(s) available with Dr. ${doctor.name}',
+                      style: GoogleFonts.dmSans(
+                          fontSize: 11, color: const Color(0xFF667085)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          // Slot grid
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: availableSlots.map((slot) {
+              return _SlotChip(
+                slot: slot,
+                onTap: () => onSlotSelected(date, slot, doctor),
+              );
+            }).toList(),
+          ),
+
+          const SizedBox(height: 8),
+          Text('Tap a slot to confirm your booking',
+              style: GoogleFonts.dmSans(
+                  fontSize: 10, color: const Color(0xFF667085))),
+        ],
+      ),
+    ).animate().fadeIn(delay: 150.ms).slideY(begin: 0.1);
+  }
+}
+
+class _SlotChip extends StatefulWidget {
+  final String slot;
+  final VoidCallback onTap;
+  const _SlotChip({required this.slot, required this.onTap});
+
+  @override
+  State<_SlotChip> createState() => _SlotChipState();
+}
+
+class _SlotChipState extends State<_SlotChip> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: _pressed
+              ? const Color(0xFF00C896)
+              : const Color(0xFF00C896).withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _pressed
+                ? const Color(0xFF00C896)
+                : const Color(0xFF00C896).withOpacity(0.4),
+            width: 1.5,
+          ),
+          boxShadow: _pressed
+              ? [BoxShadow(
+              color: const Color(0xFF00C896).withOpacity(0.3),
+              blurRadius: 8)]
+              : [],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.access_time_rounded,
+              size: 14,
+              color: _pressed ? Colors.white : const Color(0xFF00C896),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              widget.slot,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: _pressed ? Colors.white : const Color(0xFF00C896),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Document Analysis Card ───────────────────────────────────────────────────
 
 class _DocAnalysisCard extends StatefulWidget {
   final DocumentAnalysis analysis;
@@ -526,7 +696,6 @@ class _DocAnalysisCardState extends State<_DocAnalysisCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Summary
                   if (a.summary.isNotEmpty) ...[
                     _Sec('📝 Summary'),
                     const SizedBox(height: 6),
@@ -543,8 +712,6 @@ class _DocAnalysisCardState extends State<_DocAnalysisCard> {
                     ),
                     const SizedBox(height: 12),
                   ],
-
-                  // Items
                   if (a.items.isNotEmpty) ...[
                     Row(
                       children: [
@@ -558,8 +725,6 @@ class _DocAnalysisCardState extends State<_DocAnalysisCard> {
                     ...a.items.map((item) => _ItemRow(item: item)),
                     const SizedBox(height: 8),
                   ],
-
-                  // Key notes
                   if (a.keyNotes.isNotEmpty) ...[
                     _Sec('⚠️ Important Notes'),
                     const SizedBox(height: 6),
@@ -569,18 +734,12 @@ class _DocAnalysisCardState extends State<_DocAnalysisCard> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('• ', style: TextStyle(color: _c, fontWeight: FontWeight.bold)),
-                          Expanded(
-                            child: Text(n,
-                                style: GoogleFonts.dmSans(
-                                    fontSize: 12, color: const Color(0xFF344054))),
-                          ),
+                          Expanded(child: Text(n, style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF344054)))),
                         ],
                       ),
                     )),
                     const SizedBox(height: 8),
                   ],
-
-                  // Patient advice
                   if (a.patientAdvice.isNotEmpty)
                     Container(
                       padding: const EdgeInsets.all(12),
@@ -594,12 +753,8 @@ class _DocAnalysisCardState extends State<_DocAnalysisCard> {
                         children: [
                           Icon(Icons.lightbulb_outline_rounded, color: _c, size: 16),
                           const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(a.patientAdvice,
-                                style: GoogleFonts.dmSans(
-                                    fontSize: 12, color: const Color(0xFF344054),
-                                    height: 1.5, fontWeight: FontWeight.w500)),
-                          ),
+                          Expanded(child: Text(a.patientAdvice,
+                              style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF344054), height: 1.5, fontWeight: FontWeight.w500))),
                         ],
                       ),
                     ),
@@ -630,12 +785,7 @@ class _ItemRow extends StatelessWidget {
       children: [
         Row(
           children: [
-            Expanded(
-              child: Text(item.name,
-                  style: GoogleFonts.dmSans(
-                      fontWeight: FontWeight.w700, fontSize: 13,
-                      color: const Color(0xFF0D1B2A))),
-            ),
+            Expanded(child: Text(item.name, style: GoogleFonts.dmSans(fontWeight: FontWeight.w700, fontSize: 13, color: const Color(0xFF0D1B2A)))),
             if (item.price != null) _Tag(item.price!, const Color(0xFF00C896)),
           ],
         ),
@@ -646,10 +796,7 @@ class _ItemRow extends StatelessWidget {
         ],
         if (item.instructions.isNotEmpty) ...[
           const SizedBox(height: 3),
-          Text(item.instructions,
-              style: GoogleFonts.dmSans(
-                  fontSize: 11, color: const Color(0xFF344054),
-                  fontStyle: FontStyle.italic)),
+          Text(item.instructions, style: GoogleFonts.dmSans(fontSize: 11, color: const Color(0xFF344054), fontStyle: FontStyle.italic)),
         ],
       ],
     ),
@@ -676,7 +823,7 @@ class _Tag extends StatelessWidget {
   );
 }
 
-// ─── Feature 3: Medication Status Card ───────────────────────────────────────
+// ─── Medication Status Card ───────────────────────────────────────────────────
 
 class _MedStatusCard extends StatelessWidget {
   final MedStatusResult status;
@@ -704,12 +851,8 @@ class _MedStatusCard extends StatelessWidget {
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                    color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                child: Icon(
-                  status.allTaken ? Icons.check_circle_rounded : Icons.medication_rounded,
-                  color: color, size: 18,
-                ),
+                decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                child: Icon(status.allTaken ? Icons.check_circle_rounded : Icons.medication_rounded, color: color, size: 18),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -718,9 +861,7 @@ class _MedStatusCard extends StatelessWidget {
                   children: [
                     Text(
                       status.allTaken ? 'All Medications Taken Today ✓' : 'Medication Status — $pct%',
-                      style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w700, fontSize: 13,
-                          color: const Color(0xFF0D1B2A)),
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13, color: const Color(0xFF0D1B2A)),
                     ),
                     Text('${status.taken.length}/${status.all.length} doses taken today',
                         style: GoogleFonts.dmSans(fontSize: 11, color: const Color(0xFF667085))),
@@ -746,50 +887,33 @@ class _MedStatusCard extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 6),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: isTaken
-                    ? const Color(0xFF00C896).withOpacity(0.06)
-                    : Colors.orange.shade50,
+                color: isTaken ? const Color(0xFF00C896).withOpacity(0.06) : Colors.orange.shade50,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: isTaken
-                      ? const Color(0xFF00C896).withOpacity(0.25)
-                      : Colors.orange.shade200,
-                ),
+                border: Border.all(color: isTaken ? const Color(0xFF00C896).withOpacity(0.25) : Colors.orange.shade200),
               ),
               child: Row(
                 children: [
-                  Icon(
-                    isTaken ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                    color: isTaken ? const Color(0xFF00C896) : Colors.orange,
-                    size: 16,
-                  ),
+                  Icon(isTaken ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                      color: isTaken ? const Color(0xFF00C896) : Colors.orange, size: 16),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(med.name,
-                            style: GoogleFonts.dmSans(
-                                fontWeight: FontWeight.w600, fontSize: 12,
-                                color: const Color(0xFF0D1B2A))),
-                        Text('${med.dosage} · ${med.frequency}',
-                            style: GoogleFonts.dmSans(
-                                fontSize: 10, color: const Color(0xFF667085))),
+                        Text(med.name, style: GoogleFonts.dmSans(fontWeight: FontWeight.w600, fontSize: 12, color: const Color(0xFF0D1B2A))),
+                        Text('${med.dosage} · ${med.frequency}', style: GoogleFonts.dmSans(fontSize: 10, color: const Color(0xFF667085))),
                       ],
                     ),
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: isTaken
-                          ? const Color(0xFF00C896).withOpacity(0.1)
-                          : Colors.orange.shade100,
+                      color: isTaken ? const Color(0xFF00C896).withOpacity(0.1) : Colors.orange.shade100,
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       isTaken ? '✓ Taken' : 'Pending',
-                      style: TextStyle(
-                          fontSize: 10, fontWeight: FontWeight.w600,
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
                           color: isTaken ? const Color(0xFF00C896) : Colors.orange.shade700),
                     ),
                   ),
@@ -815,23 +939,19 @@ class _Bubble extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        mainAxisAlignment:
-        isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isUser)
             Container(
               width: 30, height: 30,
               margin: const EdgeInsets.only(right: 8),
-              decoration: BoxDecoration(
-                  color: const Color(0xFF00C896),
-                  borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(color: const Color(0xFF00C896), borderRadius: BorderRadius.circular(8)),
               child: const Icon(Icons.smart_toy_rounded, color: Colors.white, size: 16),
             ),
           Flexible(
             child: Column(
-              crossAxisAlignment:
-              isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -843,9 +963,7 @@ class _Bubble extends StatelessWidget {
                       bottomLeft:  Radius.circular(isUser ? 18 : 4),
                       bottomRight: Radius.circular(isUser ? 4 : 18),
                     ),
-                    boxShadow: [BoxShadow(
-                        color: Colors.black.withOpacity(0.06),
-                        blurRadius: 8, offset: const Offset(0, 2))],
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 8, offset: const Offset(0, 2))],
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -906,8 +1024,7 @@ class _AChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       border: Border.all(color: const Color(0xFFFFE083)),
     ),
-    child: Text(label,
-        style: const TextStyle(fontSize: 11, color: Color(0xFF7A5900))),
+    child: Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF7A5900))),
   );
 }
 
@@ -924,9 +1041,7 @@ class _TypingDots extends StatelessWidget {
           Container(
             width: 30, height: 30,
             margin: const EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
-                color: const Color(0xFF00C896),
-                borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: const Color(0xFF00C896), borderRadius: BorderRadius.circular(8)),
             child: const Icon(Icons.smart_toy_rounded, color: Colors.white, size: 16),
           ),
           Container(
@@ -944,8 +1059,7 @@ class _TypingDots extends StatelessWidget {
               children: List.generate(3, (i) => Container(
                 width: 7, height: 7,
                 margin: const EdgeInsets.symmetric(horizontal: 2),
-                decoration: const BoxDecoration(
-                    color: Color(0xFF00C896), shape: BoxShape.circle),
+                decoration: const BoxDecoration(color: Color(0xFF00C896), shape: BoxShape.circle),
               )
                   .animate(onPlay: (c) => c.repeat())
                   .fadeOut(delay: Duration(milliseconds: i * 200), duration: 400.ms)
@@ -965,19 +1079,14 @@ class _InputBar extends StatelessWidget {
   final VoidCallback onSend;
   final VoidCallback onImgTap;
   final bool thinking;
-  const _InputBar({
-    required this.ctrl, required this.onSend,
-    required this.thinking, required this.onImgTap,
-  });
+  const _InputBar({required this.ctrl, required this.onSend, required this.thinking, required this.onImgTap});
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
       decoration: BoxDecoration(
         color: Colors.white,
-        boxShadow: [BoxShadow(
-            color: Colors.black.withOpacity(0.06), blurRadius: 12,
-            offset: const Offset(0, -4))],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, -4))],
       ),
       child: Row(
         children: [
@@ -986,19 +1095,12 @@ class _InputBar extends StatelessWidget {
             child: Container(
               width: 42, height: 42,
               decoration: BoxDecoration(
-                color: thinking
-                    ? const Color(0xFFF2F4F7)
-                    : const Color(0xFF00C896).withOpacity(0.1),
+                color: thinking ? const Color(0xFFF2F4F7) : const Color(0xFF00C896).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: thinking
-                      ? const Color(0xFFE4E7EC)
-                      : const Color(0xFF00C896).withOpacity(0.3),
-                ),
+                border: Border.all(color: thinking ? const Color(0xFFE4E7EC) : const Color(0xFF00C896).withOpacity(0.3)),
               ),
               child: Icon(Icons.add_photo_alternate_rounded,
-                  color: thinking ? const Color(0xFFB0BAC9) : const Color(0xFF00C896),
-                  size: 20),
+                  color: thinking ? const Color(0xFFB0BAC9) : const Color(0xFF00C896), size: 20),
             ),
           ),
           const SizedBox(width: 8),
@@ -1010,11 +1112,8 @@ class _InputBar extends StatelessWidget {
               maxLines: null,
               textCapitalization: TextCapitalization.sentences,
               decoration: InputDecoration(
-                hintText: thinking
-                    ? 'CareLoop AI is thinking…'
-                    : 'Ask anything · book · check meds · scan bill 📄',
-                hintStyle: GoogleFonts.dmSans(
-                    color: const Color(0xFFB0BAC9), fontSize: 13),
+                hintText: thinking ? 'CareLoop AI is thinking…' : 'Ask anything · book · check meds · scan bill 📄',
+                hintStyle: GoogleFonts.dmSans(color: const Color(0xFFB0BAC9), fontSize: 13),
               ),
             ),
           ),
@@ -1025,14 +1124,11 @@ class _InputBar extends StatelessWidget {
               duration: const Duration(milliseconds: 200),
               width: 46, height: 46,
               decoration: BoxDecoration(
-                color: thinking
-                    ? const Color(0xFFE8F7F3)
-                    : const Color(0xFF00C896),
+                color: thinking ? const Color(0xFFE8F7F3) : const Color(0xFF00C896),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(Icons.send_rounded,
-                  color: thinking ? const Color(0xFF00C896) : Colors.white,
-                  size: 20),
+                  color: thinking ? const Color(0xFF00C896) : Colors.white, size: 20),
             ),
           ),
         ],
@@ -1117,19 +1213,15 @@ class _LoadingState extends StatelessWidget {
       children: [
         Container(
           width: 72, height: 72,
-          decoration: BoxDecoration(
-              color: const Color(0xFF00C896).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20)),
+          decoration: BoxDecoration(color: const Color(0xFF00C896).withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
           child: const Icon(Icons.smart_toy_rounded, color: Color(0xFF00C896), size: 36),
         ),
         const SizedBox(height: 16),
         Text('CareLoop AI', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
-        Text('Loading your health profile…',
-            style: GoogleFonts.dmSans(color: const Color(0xFF667085), fontSize: 14)),
+        Text('Loading your health profile…', style: GoogleFonts.dmSans(color: const Color(0xFF667085), fontSize: 14)),
         const SizedBox(height: 24),
-        const SizedBox(width: 28, height: 28,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00C896))),
+        const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00C896))),
       ],
     ),
   );
@@ -1144,13 +1236,12 @@ class _EmptyState extends StatelessWidget {
       children: [
         const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF00C896), size: 48),
         const SizedBox(height: 16),
-        Text('Start a conversation',
-            style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600)),
+        Text('Start a conversation', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600)),
         const SizedBox(height: 12),
-        _Hint(Icons.calendar_month_rounded,  const Color(0xFF6C63FF), 'Book appointment → picks date & auto-books'),
-        _Hint(Icons.notifications_active_rounded, Colors.red,        'Feel unwell → alerts your doctor instantly'),
-        _Hint(Icons.medication_rounded,           const Color(0xFF00C896), '"Did I take my meds?" → real-time check'),
-        _Hint(Icons.document_scanner_rounded,     Colors.orange,    'Tap 📎 → scan bills & prescriptions'),
+        _Hint(Icons.calendar_month_rounded, const Color(0xFF6C63FF), 'Book appointment → pick date & time slot'),
+        _Hint(Icons.notifications_active_rounded, Colors.red, 'Feel unwell → alerts your doctor instantly'),
+        _Hint(Icons.medication_rounded, const Color(0xFF00C896), '"Did I take my meds?" → real-time check'),
+        _Hint(Icons.document_scanner_rounded, Colors.orange, 'Tap 📎 → scan bills & prescriptions'),
       ],
     ),
   );
@@ -1168,15 +1259,11 @@ class _Hint extends StatelessWidget {
       children: [
         Container(
           padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-              color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
           child: Icon(icon, color: color, size: 14),
         ),
         const SizedBox(width: 10),
-        Expanded(
-          child: Text(text,
-              style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF344054))),
-        ),
+        Expanded(child: Text(text, style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF344054)))),
       ],
     ),
   );
