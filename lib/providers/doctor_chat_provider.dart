@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide debugPrint;
 import '../models/doctor_model.dart';
 import '../models/patient_model.dart';
 import '../services/gemini_service.dart' hide FirestoreService;

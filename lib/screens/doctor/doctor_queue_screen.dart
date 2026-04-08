@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../models/queue_model.dart';
 import '../../services/firestore_service.dart';
+import '../../services/notification_service.dart';
+import '../../services/inbox_service.dart';
 
 class DoctorQueueScreen extends StatelessWidget {
   final String clinicId;
@@ -61,13 +63,13 @@ class DoctorQueueScreen extends StatelessWidget {
   }
 }
 
-// ─── Queue card ───────────────────────────────────────────────────────────────
+// ─── Queue Card ───────────────────────────────────────────────────────────────
 
 class _QueueCard extends StatelessWidget {
-  final QueueEntry      entry;
-  final int             position;
-  final int             total;
-  final String          clinicId;
+  final QueueEntry       entry;
+  final int              position;
+  final int              total;
+  final String           clinicId;
   final FirestoreService db;
 
   const _QueueCard({
@@ -78,10 +80,73 @@ class _QueueCard extends StatelessWidget {
     required this.db,
   });
 
+  // ── Issue 3 fix: Send patient notification when status changes ────────────
+  Future<void> _updateStatusAndNotifyPatient(
+      BuildContext ctx,
+      QueueStatus newStatus,
+      ) async {
+    // 1. Update Firestore queue status
+    await db.updateQueueStatus(clinicId, entry.id, newStatus);
+
+    // 2. Build notification content based on new status
+    String title = '';
+    String body  = '';
+    switch (newStatus) {
+      case QueueStatus.called:
+        title = '🏥 It\'s your turn!';
+        body  = 'Dr. is ready for you. Please proceed to the consultation room now.';
+        break;
+      case QueueStatus.inProgress:
+        title = '🏥 Consultation started';
+        body  = 'Your consultation with the doctor has begun.';
+        break;
+      case QueueStatus.done:
+        title = '✅ Consultation complete';
+        body  = 'Your visit is complete. We hope you feel better soon!';
+        break;
+      default:
+        return; // No notification for 'waiting'
+    }
+
+    // 3. Send push notification to PATIENT (not doctor)
+    await NotificationService.sendPushToUser(
+      userId:         entry.patientId,
+      userCollection: 'patients',
+      title:          title,
+      body:           body,
+      channel:        'careloop_queue',
+    );
+
+    // 4. Write to patient's inbox (persistent in-app notification)
+    await InboxService.sendQueueNotification(
+      userId:   entry.patientId,
+      message:  body,
+      isUrgent: newStatus == QueueStatus.called,
+    );
+  }
+
+  // ── Urgent escalation: notify patient ────────────────────────────────────
+  Future<void> _markUrgentAndNotify(BuildContext ctx) async {
+    await db.updateQueuePriority(clinicId, entry.id, 10);
+
+    await NotificationService.sendPushToUser(
+      userId:         entry.patientId,
+      userCollection: 'patients',
+      title:          '⚡ Priority Updated',
+      body:           'Your queue priority has been raised. Please stand by.',
+      channel:        'careloop_queue',
+    );
+
+    await InboxService.sendQueueNotification(
+      userId:   entry.patientId,
+      message:  'Your queue priority has been raised due to urgent symptoms.',
+      isUrgent: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final statusInfo  = _statusInfo(entry.status);
-    // ✅ Use static helper — plain int, no function reference
     final waitMinutes = QueueEntry.waitMinutesForPosition(position);
     final waitLabel   = position == 1 ? "Next up!" : "~$waitMinutes min";
 
@@ -94,17 +159,15 @@ class _QueueCard extends StatelessWidget {
         border: Border.all(
             color: (statusInfo['border'] as Color).withOpacity(0.4)),
         boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.04), blurRadius: 8)
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header row ──
+          // ── Header ───────────────────────────────────────────────────────
           Row(
             children: [
-              // Position badge
               Container(
                 width: 44, height: 44,
                 decoration: BoxDecoration(
@@ -120,8 +183,6 @@ class _QueueCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-
-              // Name + status chips
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -135,12 +196,11 @@ class _QueueCard extends StatelessWidget {
                     Row(
                       children: [
                         _Chip(
-                          label:  statusInfo['label'] as String,
-                          bg:     statusInfo['bg']   as Color,
-                          color:  statusInfo['text'] as Color,
+                          label: statusInfo['label'] as String,
+                          bg:    statusInfo['bg']   as Color,
+                          color: statusInfo['text'] as Color,
                         ),
                         const SizedBox(width: 6),
-                        // ✅ waitLabel is a plain string — no function shown
                         _Chip(
                           label: waitLabel,
                           bg:    const Color(0xFFF2F4F7),
@@ -151,12 +211,11 @@ class _QueueCard extends StatelessWidget {
                   ],
                 ),
               ),
-
-              // Priority dot
               Container(
                 width: 10, height: 10,
                 decoration: BoxDecoration(
-                  color: _priorityColor(entry.priority), shape: BoxShape.circle,
+                  color: _priorityColor(entry.priority),
+                  shape: BoxShape.circle,
                 ),
               ),
             ],
@@ -164,13 +223,12 @@ class _QueueCard extends StatelessWidget {
 
           const SizedBox(height: 10),
 
-          // ── Symptoms ──
+          // ── Symptoms ──────────────────────────────────────────────────────
           if (entry.symptoms.isNotEmpty)
             Wrap(
               spacing: 6, runSpacing: 4,
               children: entry.symptoms.map((s) => Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color:        const Color(0xFFF2F4F7),
                   borderRadius: BorderRadius.circular(8),
@@ -183,36 +241,34 @@ class _QueueCard extends StatelessWidget {
 
           const SizedBox(height: 12),
 
-          // ── Action buttons — Wrap prevents overflow ──────────────────
-          // OLD: Row(...) caused RIGHT OVERFLOWED BY 210 PIXELS
-          // NEW: Wrap(...) — buttons flow to next line if needed
+          // ── Action buttons ────────────────────────────────────────────────
           Wrap(
-            spacing:    8,
-            runSpacing: 8,
+            spacing: 8, runSpacing: 8,
             children: [
+              // Issue 3 fix: all status-change buttons now notify the patient
               if (entry.status == QueueStatus.waiting)
                 _ActionBtn(
                   label: 'Call',
                   icon:  Icons.notifications_active_rounded,
                   color: const Color(0xFF00C896),
-                  onTap: () => db.updateQueueStatus(
-                      clinicId, entry.id, QueueStatus.called),
+                  onTap: () => _updateStatusAndNotifyPatient(
+                      context, QueueStatus.called),
                 ),
               if (entry.status == QueueStatus.called)
                 _ActionBtn(
                   label: 'In Progress',
                   icon:  Icons.medical_services_rounded,
                   color: const Color(0xFF2196F3),
-                  onTap: () => db.updateQueueStatus(
-                      clinicId, entry.id, QueueStatus.inProgress),
+                  onTap: () => _updateStatusAndNotifyPatient(
+                      context, QueueStatus.inProgress),
                 ),
               if (entry.status == QueueStatus.inProgress)
                 _ActionBtn(
                   label: 'Done',
                   icon:  Icons.check_circle_rounded,
                   color: const Color(0xFF00C896),
-                  onTap: () => db.updateQueueStatus(
-                      clinicId, entry.id, QueueStatus.done),
+                  onTap: () => _updateStatusAndNotifyPatient(
+                      context, QueueStatus.done),
                 ),
               _ActionBtn(
                 label: 'Remove',
@@ -224,7 +280,7 @@ class _QueueCard extends StatelessWidget {
                 label: 'Urgent',
                 icon:  Icons.priority_high_rounded,
                 color: Colors.orange,
-                onTap: () => db.updateQueuePriority(clinicId, entry.id, 10),
+                onTap: () => _markUrgentAndNotify(context),
               ),
             ],
           ),
@@ -240,8 +296,10 @@ class _QueueCard extends StatelessWidget {
         title:   const Text('Remove from Queue'),
         content: Text('Remove ${entry.patientName} from the queue?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () {
               db.removeQueueEntry(clinicId, entry.id);
@@ -264,16 +322,16 @@ class _QueueCard extends StatelessWidget {
   Map<String, dynamic> _statusInfo(QueueStatus s) {
     switch (s) {
       case QueueStatus.called:
-        return {'label': 'Called',      'bg': const Color(0xFFE8F5E9),
+        return {'label': 'Called', 'bg': const Color(0xFFE8F5E9),
           'text': const Color(0xFF1B5E20), 'border': Colors.green};
       case QueueStatus.inProgress:
         return {'label': 'In Progress', 'bg': const Color(0xFFE3F2FD),
           'text': const Color(0xFF0D47A1), 'border': Colors.blue};
       case QueueStatus.done:
-        return {'label': 'Done',        'bg': const Color(0xFFF2F4F7),
+        return {'label': 'Done', 'bg': const Color(0xFFF2F4F7),
           'text': const Color(0xFF667085), 'border': Colors.grey};
       default:
-        return {'label': 'Waiting',     'bg': const Color(0xFFFFF8E1),
+        return {'label': 'Waiting', 'bg': const Color(0xFFFFF8E1),
           'text': const Color(0xFF7A5900), 'border': Colors.orange};
     }
   }
@@ -290,8 +348,8 @@ class _Chip extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-    decoration:
-    BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
+    decoration: BoxDecoration(
+        color: bg, borderRadius: BorderRadius.circular(10)),
     child: Text(label,
         style: TextStyle(
             fontSize: 11, fontWeight: FontWeight.w600, color: color)),
@@ -299,13 +357,14 @@ class _Chip extends StatelessWidget {
 }
 
 class _ActionBtn extends StatelessWidget {
-  final String    label;
-  final IconData  icon;
-  final Color     color;
+  final String     label;
+  final IconData   icon;
+  final Color      color;
   final VoidCallback onTap;
-  const _ActionBtn(
-      {required this.label, required this.icon,
-        required this.color,  required this.onTap});
+  const _ActionBtn({
+    required this.label, required this.icon,
+    required this.color, required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) => GestureDetector(

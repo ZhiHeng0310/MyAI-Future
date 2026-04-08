@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/checkin_model.dart';
 import '../models/patient_model.dart';
 import '../models/doctor_model.dart';
@@ -10,6 +11,7 @@ import '../services/firestore_service.dart';
 import '../services/notification_service.dart';
 import '../services/inbox_service.dart';
 import 'queue_provider.dart';
+import 'appointment_provider.dart';
 
 // ─── Chat Message ─────────────────────────────────────────────────────────────
 
@@ -21,7 +23,7 @@ class ChatMessage {
   final DateTime     timestamp;
   final bool         hasImage;
 
-  /// True = show inline calendar date picker
+  /// Show inline calendar date picker
   final bool showCalendarPicker;
 
   /// Symptoms carried forward when user picks a date
@@ -47,7 +49,7 @@ class ChatMessage {
   }) : timestamp = timestamp ?? DateTime.now();
 }
 
-/// Result of medication status check (Feature 3)
+/// Result of medication status check
 class MedStatusResult {
   final List<Medication> all;
   final List<Medication> taken;
@@ -67,38 +69,40 @@ class MedStatusResult {
 // ─── Chat Provider ────────────────────────────────────────────────────────────
 
 class ChatProvider extends ChangeNotifier {
-  GeminiService  _gemini        = GeminiService(role: GeminiRole.patient);
-  final _db                     = FirestoreService();
-  QueueProvider? _queueProvider;
+  GeminiService      _gemini           = GeminiService(role: GeminiRole.patient);
+  final _db                            = FirestoreService();
+  QueueProvider?     _queueProvider;
+  AppointmentProvider? _appointmentProvider;
 
   final List<ChatMessage> _messages = [];
-  bool           _thinking          = false;
-  bool           _sessionReady      = false;
-  String?        _todayQuestion;
+  bool             _thinking          = false;
+  bool             _sessionReady      = false;
+  String?          _todayQuestion;
 
   // Loaded from Firestore at init — injected into Gemini context
-  PatientModel?  _patient;
-  DoctorModel?   _assignedDoctor;
-  List<Medication> _loadedMeds      = [];
+  PatientModel?    _patient;
+  DoctorModel?     _assignedDoctor;
+  List<Medication> _loadedMeds        = [];
 
   // Held while user picks a date from the calendar
-  List<String>   _pendingSymptoms   = [];
+  List<String>     _pendingSymptoms   = [];
 
-  // ── Getters ───────────────────────────────────────────────────────────────
-  List<ChatMessage> get messages     => _messages;
-  bool              get thinking     => _thinking;
-  bool              get sessionReady => _sessionReady;
-  String?           get todayQuestion => _todayQuestion;
-  PatientModel?     get patient      => _patient;
+  // Getters
+  List<ChatMessage>  get messages      => _messages;
+  bool               get thinking      => _thinking;
+  bool               get sessionReady  => _sessionReady;
+  String?            get todayQuestion => _todayQuestion;
+  PatientModel?      get patient       => _patient;
 
   void setQueueProvider(QueueProvider qp) => _queueProvider = qp;
+  void setAppointmentProvider(AppointmentProvider ap) => _appointmentProvider = ap;
 
-  // ── Session init — loads all patient context FIRST ────────────────────────
+  // ── Session init ──────────────────────────────────────────────────────────
   Future<void> initSession(PatientModel patient) async {
     if (_sessionReady) return;
     _patient = patient;
 
-    // 1. Load medications from Firestore
+    // 1. Load medications
     try {
       _loadedMeds = await _db.getMedicationsForPatient(patient.id);
     } catch (_) {
@@ -114,29 +118,20 @@ class ChatProvider extends ChangeNotifier {
       }
     }
 
-    // 3. If still no assigned doctor but has meds, find doctor from meds
+    // 3. If still no doctor but has meds, try to find doctor
     if (_assignedDoctor == null && _loadedMeds.isNotEmpty) {
       try {
         final doctors = await _db.getAllDoctors();
-        if (doctors.isNotEmpty) {
-          // Try to match by seeing who has this patient
-          final patientsOfFirst = await _db.getPatientsForDoctor(doctors.first.id);
-          if (patientsOfFirst.any((p) => p.id == patient.id)) {
-            _assignedDoctor = doctors.first;
-          } else {
-            // Just use first available
-            _assignedDoctor = doctors.first;
-          }
-        }
+        if (doctors.isNotEmpty) _assignedDoctor = doctors.first;
       } catch (_) {}
     }
 
-    // 4. Build medication names list for Gemini context
+    // 4. Build med names for Gemini context
     final medNames = _loadedMeds
         .map((m) => '${m.name} ${m.dosage} (${m.frequency})')
         .toList();
 
-    // 5. Init Gemini session with ALL real patient data
+    // 5. Init Gemini — errors are non-fatal (fallback still works)
     try {
       await _gemini.initSession(
         name:               patient.name,
@@ -146,11 +141,10 @@ class ChatProvider extends ChangeNotifier {
         assignedDoctorName: _assignedDoctor?.name,
       );
     } catch (e) {
-      // Gemini failed to init — still allow chat with fallback
-      debugPrint('⚠️ Gemini init failed: $e');
+      debugPrint('⚠️ Gemini init: $e');
     }
 
-    // 6. Generate personalised check-in question
+    // 6. Generate check-in question
     _todayQuestion = await _gemini.generateCheckInQuestion(
         patient.diagnosis ?? 'General', patient.daysSinceVisit);
 
@@ -193,27 +187,44 @@ class ChatProvider extends ChangeNotifier {
     _thinking = true;
     notifyListeners();
     final response = await _gemini.sendMessage(text);
-    await _processResponse(response, text);
+    await _processResponse(response, text, isImageScan: false);
   }
 
-  // ── Send with image (Feature 4 — document scan) ──────────────────────────
+  // ── Send with image (Issue 1+2 fix) ──────────────────────────────────────
   Future<void> sendMessageWithImage(
       String text, Uint8List imageBytes, String mimeType) async {
-    final display = text.isEmpty ? '📷 Document sent for analysis' : text;
+    // Issue 1 fix: show a clear user message and AI pre-response
+    final display = text.isEmpty ? '📄 Please scan and summarise this document for me.' : text;
     _messages.add(ChatMessage(text: display, isUser: true, hasImage: true));
+
+    // Show a pending "scanning" message immediately so user knows what's happening
+    _messages.add(ChatMessage(
+      text: '📄 Sure! I\'m scanning your document now — I\'ll give you a clear summary in just a moment...',
+      isUser: false,
+    ));
     _thinking = true;
     notifyListeners();
 
-    final prompt = text.isEmpty
-        ? 'Analyse this medication bill / prescription / medical report. '
-        'Provide a clear structured breakdown that my patient can easily understand.'
+    // Build explicit scan prompt — forces Gemini into document_analysis path
+    final scanPrompt = text.isEmpty
+        ? 'Please analyse this medication bill / prescription / medical report / document image. '
+        'Provide a clear and easy-to-understand structured breakdown. '
+        'Include all medication names, dosages, prices, instructions, and any important notes.'
         : text;
 
-    final response = await _gemini.sendMessageWithImage(prompt, imageBytes, mimeType);
-    await _processResponse(response, prompt);
+    final response = await _gemini.sendMessageWithImage(
+        scanPrompt, imageBytes, mimeType);
+
+    // Remove the pending "scanning" message before showing real response
+    if (_messages.isNotEmpty && !_messages.last.isUser &&
+        _messages.last.text.contains('scanning your document')) {
+      _messages.removeLast();
+    }
+
+    await _processResponse(response, scanPrompt, isImageScan: true);
   }
 
-  // ── Feature 1: Patient selected a date from calendar ─────────────────────
+  // ── Feature 1: Date selected from calendar ────────────────────────────────
   Future<void> onDateSelected(DateTime date) async {
     if (_patient == null) return;
 
@@ -225,27 +236,24 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Determine doctor to book with
       DoctorModel? doctor = _assignedDoctor;
       if (doctor == null) {
         final all = await _db.getAllDoctors();
         if (all.isEmpty) {
-          _addAiMsg('⚠️ No doctors are available right now. '
-              'Please contact the clinic directly.');
+          _addAiMsg('⚠️ No doctors are available right now. Please contact the clinic directly.');
           return;
         }
         doctor = all.first;
       }
 
-      // Get available slots for that date
       final booked    = await _db.getBookedSlots(doctor.id, date);
       final schedule  = DoctorSchedule(doctorId: doctor.id);
       final available = schedule.allSlots.where((s) => !booked.contains(s)).toList();
 
       if (available.isEmpty) {
         _messages.add(ChatMessage(
-          text: '😕 No slots available on ${_fmtDate(date)} with '
-              'Dr. ${doctor.name}. Please choose another date.',
+          text: '😕 No slots available on ${_fmtDate(date)} with Dr. ${doctor.name}. '
+              'Please choose another date.',
           isUser:             false,
           showCalendarPicker: true,
           appointmentSymptoms: _pendingSymptoms,
@@ -270,16 +278,15 @@ class ChatProvider extends ChangeNotifier {
       );
 
       if (appt == null) {
-        // Slot was just taken — retry with next slot
+        // Slot race condition — retry with next
         if (available.length > 1) {
-          final slot2 = available[1];
           final appt2 = await _db.bookAppointment(
             doctorId:    doctor.id,
             doctorName:  doctor.name,
             patientId:   _patient!.id,
             patientName: _patient!.name,
             date:        date,
-            timeSlot:    slot2,
+            timeSlot:    available[1],
             symptoms:    _pendingSymptoms.isNotEmpty ? _pendingSymptoms : ['General consultation'],
           );
           if (appt2 != null) {
@@ -290,8 +297,7 @@ class ChatProvider extends ChangeNotifier {
           }
         }
         _messages.add(ChatMessage(
-          text: '😕 All slots on ${_fmtDate(date)} were just taken. '
-              'Please pick another date.',
+          text: '😕 All slots on ${_fmtDate(date)} were just taken. Please pick another date.',
           isUser:             false,
           showCalendarPicker: true,
           appointmentSymptoms: _pendingSymptoms,
@@ -301,7 +307,9 @@ class ChatProvider extends ChangeNotifier {
         return;
       }
 
-      // ✅ Success
+      // Issue 5+6 fix: refresh AppointmentProvider so new booking appears in dashboard
+      _appointmentProvider?.startListening(_patient!.id);
+
       await _sendBookingNotifications(doctor, appt);
       _addBookingSuccessMsg(appt, doctor);
       _pendingSymptoms = [];
@@ -319,8 +327,7 @@ class ChatProvider extends ChangeNotifier {
           '📅 Date: ${appt.dateLabel}\n'
           '🕐 Time: ${appt.timeSlot}\n'
           '📋 Reason: ${appt.symptoms.isNotEmpty ? appt.symptoms.join(", ") : "General consultation"}\n\n'
-          'A confirmation has been sent to you. '
-          'Please arrive 10 minutes early. See you then! 😊',
+          'A confirmation has been sent to you. Please arrive 10 minutes early. 😊',
       isUser:  false,
       actions: ['appointment_confirmed'],
     ));
@@ -329,7 +336,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> _sendBookingNotifications(DoctorModel doctor, AppointmentSlot appt) async {
-    // ✅ Notify PATIENT
+    // Notify PATIENT
     await NotificationService.showQueueStatusNotification(
       title: '✅ Appointment Confirmed!',
       body:  'Dr. ${doctor.name} on ${appt.dateLabel} at ${appt.timeSlot}',
@@ -348,13 +355,13 @@ class ChatProvider extends ChangeNotifier {
       channel:        'careloop_queue',
     );
 
-    // ✅ Notify DOCTOR
+    // Notify DOCTOR
     await _db.createDoctorInboxMessage(DoctorInboxMessage(
       id:          '',
       doctorId:    doctor.id,
       patientId:   _patient!.id,
       patientName: _patient!.name,
-      message:     '📅 New appointment: ${_patient!.name} has booked '
+      message:     '📅 New appointment: ${_patient!.name} booked '
           '${appt.dateLabel} at ${appt.timeSlot}. '
           'Reason: ${appt.symptoms.isNotEmpty ? appt.symptoms.join(", ") : "General consultation"}',
       type:        'appointment_booked',
@@ -371,12 +378,99 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // ── Process Gemini response ───────────────────────────────────────────────
-  Future<void> _processResponse(GeminiResponse response, String userText) async {
-    String           msg        = response.message;
-    List<String>     finalActs  = List.from(response.actions);
-    bool             showCal    = false;
-    MedStatusResult? medStatus;
+  Future<void> _processResponse(
+      GeminiResponse response,
+      String userText, {
+        bool isImageScan = false,
+      }) async {
+    String            msg        = response.message;
+    List<String>      finalActs  = List.from(response.actions);
+    bool              showCal    = false;
+    MedStatusResult?  medStatus;
     DocumentAnalysis? docAnalysis;
+
+    // ── Issue 2 fix: Document scan takes full priority — skip ALL other actions ──
+    if (isImageScan || response.documentAnalysis != null) {
+      docAnalysis = response.documentAnalysis;
+
+      // Build a good message if Gemini gave a short one
+      if (msg.isEmpty || msg == 'Received.' || msg == 'Update received.') {
+        msg = docAnalysis != null
+            ? '📄 Here\'s the analysis of your document:'
+            : '📄 I\'ve reviewed your document. Here\'s what I found:';
+      }
+
+      // Issue 2 fix: NO calendar, NO alert, NO other logic when scanning
+      _messages.add(ChatMessage(
+        text:             msg,
+        isUser:           false,
+        risk:             'low',
+        actions:          const [],
+        documentAnalysis: docAnalysis,
+      ));
+      _thinking = false;
+      notifyListeners();
+
+      // Save check-in but with no actions
+      if (_patient != null) {
+        await _db.saveCheckIn(CheckIn(
+          id: '', patientId: _patient!.id,
+          userMessage: userText, aiResponse: msg,
+          risk: 'low', actionsTriggered: [],
+          createdAt: DateTime.now(),
+        ));
+      }
+      return; // Early return — document scan is complete
+    }
+
+    // ── Issue 4 fix: Medication check — NO calendar, skip appointment logic ──
+    final isMedCheck = response.actions.contains('check_medications') ||
+        response.checkMedications;
+
+    if (isMedCheck) {
+      // Remove any appointment-related entries so calendar doesn't appear
+      finalActs.remove('check_medications');
+      finalActs.remove('book_appointment');
+      showCal = false; // Explicitly prevent calendar
+
+      medStatus = await _checkMedStatus();
+      msg       = _buildMedStatusMsg(medStatus);
+
+      if (medStatus != null && !medStatus.noMeds && !medStatus.allTaken) {
+        for (final med in medStatus.missed) {
+          await NotificationService.showMedicationReminder(med.name, med.dosage);
+          if (_patient != null) {
+            await InboxService.sendMedicationReminder(
+              userId:         _patient!.id,
+              medicationName: med.name,
+              dosage:         med.dosage,
+              medicationId:   med.id,
+            );
+          }
+        }
+      }
+
+      _messages.add(ChatMessage(
+        text:             msg,
+        isUser:           false,
+        risk:             'low',
+        actions:          finalActs,
+        medicationStatus: medStatus,
+        showCalendarPicker: false, // Explicitly false
+      ));
+      _thinking = false;
+      notifyListeners();
+
+      if (_patient != null) {
+        await _db.saveCheckIn(CheckIn(
+          id: '', patientId: _patient!.id,
+          userMessage: userText, aiResponse: msg,
+          risk: 'low', actionsTriggered: [],
+          createdAt: DateTime.now(),
+        ));
+      }
+      return; // Early return
+    }
 
     // ── Feature 1: Book appointment → show calendar ───────────────────────
     if (response.actions.contains('book_appointment') || response.appointmentIntent) {
@@ -400,32 +494,6 @@ class ChatProvider extends ChangeNotifier {
       }
     }
 
-    // ── Feature 3: Check medications ──────────────────────────────────────
-    if (response.actions.contains('check_medications') || response.checkMedications) {
-      finalActs.remove('check_medications');
-      medStatus = await _checkMedStatus();
-      msg       = _buildMedStatusMsg(medStatus);
-
-      if (medStatus != null && !medStatus.noMeds && !medStatus.allTaken) {
-        // Send reminders for missed meds
-        for (final med in medStatus.missed) {
-          await NotificationService.showMedicationReminder(med.name, med.dosage);
-          await InboxService.sendMedicationReminder(
-            userId:         _patient!.id,
-            medicationName: med.name,
-            dosage:         med.dosage,
-            medicationId:   med.id,
-          );
-        }
-      }
-    }
-
-    // ── Feature 4: Document analysis ─────────────────────────────────────
-    if (response.documentAnalysis != null) {
-      docAnalysis = response.documentAnalysis;
-      if (msg.isEmpty) msg = '📄 Here\'s the analysis of your document:';
-    }
-
     // ── Agentic: join queue ───────────────────────────────────────────────
     if (response.actions.contains('join_queue')) {
       msg = await _handleQueueJoin(response);
@@ -439,22 +507,16 @@ class ChatProvider extends ChangeNotifier {
       actions:            finalActs.where((a) => a != 'alert_doctor').toList(),
       showCalendarPicker: showCal,
       appointmentSymptoms: response.appointmentSymptoms,
-      documentAnalysis:   docAnalysis,
-      medicationStatus:   medStatus,
     ));
     _thinking = false;
     notifyListeners();
 
-    // Persist check-in to Firestore
     if (_patient != null) {
       await _db.saveCheckIn(CheckIn(
-        id:               '',
-        patientId:        _patient!.id,
-        userMessage:      userText,
-        aiResponse:       msg,
-        risk:             response.risk.name,
-        actionsTriggered: finalActs,
-        createdAt:        DateTime.now(),
+        id: '', patientId: _patient!.id,
+        userMessage: userText, aiResponse: msg,
+        risk: response.risk.name, actionsTriggered: finalActs,
+        createdAt: DateTime.now(),
       ));
       for (final a in finalActs) await _handleOtherAction(a);
     }
@@ -464,7 +526,6 @@ class ChatProvider extends ChangeNotifier {
   Future<void> _handleAlertDoctor(String message, String riskLevel) async {
     if (_patient == null) return;
 
-    // Determine doctorId — use assigned doctor first, then fallback
     String? doctorId   = _patient!.assignedDoctorId ?? _assignedDoctor?.id;
     String? doctorName = _assignedDoctor?.name;
 
@@ -479,26 +540,18 @@ class ChatProvider extends ChangeNotifier {
     }
 
     if (doctorId == null || doctorId.isEmpty) {
-      // No doctor at all — just show local alert
       await NotificationService.showHealthAlert(
           '${_patient!.name} reported: $message');
       return;
     }
 
-    // Create HealthAlert in Firestore
     final alert = HealthAlert(
-      id:          '',
-      patientId:   _patient!.id,
-      patientName: _patient!.name,
-      doctorId:    doctorId,
-      message:     message,
-      riskLevel:   riskLevel,
-      status:      'pending',
-      createdAt:   DateTime.now(),
+      id: '', patientId: _patient!.id, patientName: _patient!.name,
+      doctorId: doctorId, message: message, riskLevel: riskLevel,
+      status: 'pending', createdAt: DateTime.now(),
     );
     await _db.createHealthAlert(alert);
 
-    // Push to doctor
     await NotificationService.sendPushToUser(
       userId:         doctorId,
       userCollection: 'doctors',
@@ -506,8 +559,6 @@ class ChatProvider extends ChangeNotifier {
       body:           '$message (Risk: $riskLevel) — Tap to review and send advice.',
       channel:        'careloop_alerts',
     );
-
-    debugPrint('✅ Health alert sent to doctor $doctorId (${doctorName ?? "?"})');
   }
 
   // ── Feature 3: Check medication status ───────────────────────────────────
@@ -525,10 +576,10 @@ class ChatProvider extends ChangeNotifier {
   }
 
   String _buildMedStatusMsg(MedStatusResult? s) {
-    if (s == null)      return '❌ Could not retrieve your medication data. Please try again.';
-    if (s.noMeds)       return 'You don\'t have any medications prescribed yet. '
+    if (s == null)  return '❌ Could not retrieve your medication data. Please try again.';
+    if (s.noMeds)   return 'You don\'t have any medications prescribed yet. '
         'Your doctor will add medications after your consultation.';
-    if (s.allTaken)     return '✅ You\'ve taken ALL your medications today! '
+    if (s.allTaken) return '✅ You\'ve taken ALL your medications today! '
         'Great job — keep up the consistency!\n\n'
         '${s.all.map((m) => '✓ ${m.name} (${m.dosage})').join('\n')}';
 
@@ -561,7 +612,7 @@ class ChatProvider extends ChangeNotifier {
     final pos  = _queueProvider!.myPosition;
     final wait = _queueProvider!.myEstimatedWait;
     return '✅ Added you to the queue at position #$pos. '
-        '${pos <= 1 ? "You\'re next — head to the clinic!" : "~$wait minutes estimated wait."} 🏥';
+        '${pos <= 1 ? "You\'re next — head to the clinic!" : "~$wait minutes wait."} 🏥';
   }
 
   // ── Other actions ─────────────────────────────────────────────────────────
@@ -570,9 +621,8 @@ class ChatProvider extends ChangeNotifier {
     switch (action) {
       case 'suggest_revisit':
         await _db.createAlert(
-          patientId: _patient!.id,
-          type:      'revisit',
-          message:   'AI suggests a revisit.',
+          patientId: _patient!.id, type: 'revisit',
+          message: 'AI suggests a revisit.',
         );
         break;
       case 'remind_medication':
@@ -594,7 +644,7 @@ class ChatProvider extends ChangeNotifier {
   String _fmtDate(DateTime d) {
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const days   = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    return '${days[d.weekday-1]}, ${d.day} ${months[d.month-1]} ${d.year}';
+    return '${days[d.weekday - 1]}, ${d.day} ${months[d.month - 1]} ${d.year}';
   }
 
   void clearChat() {

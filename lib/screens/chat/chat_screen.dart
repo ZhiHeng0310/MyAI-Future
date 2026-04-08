@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/gemini_service.dart';
+import '../../services/gemini_service.dart' hide ChatProvider, MedStatusResult, ChatMessage;
 import '../../widgets/risk_badge.dart';
 
 class ChatScreen extends StatefulWidget {
