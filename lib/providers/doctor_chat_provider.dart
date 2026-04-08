@@ -2,7 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart' hide debugPrint;
 import '../models/doctor_model.dart';
 import '../models/patient_model.dart';
-import '../services/gemini_service.dart' hide FirestoreService;
+import '../services/gemini_service.dart';
 import '../services/firestore_service.dart';
 import '../services/notification_service.dart';
 import '../services/inbox_service.dart';
@@ -321,3 +321,5 @@ class DoctorChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 }
+
+void debugPrint(String msg) => print(msg);

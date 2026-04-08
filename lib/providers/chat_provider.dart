@@ -320,13 +320,18 @@ class ChatProvider extends ChangeNotifier {
   }
 
   void _addBookingSuccessMsg(AppointmentSlot appt, DoctorModel doctor) {
+    // Fix null safety: check if symptoms is not null before accessing isNotEmpty
+    final symptomsText = (appt.symptoms?.isNotEmpty ?? false)
+        ? appt.symptoms!.join(", ")
+        : "General consultation";
+
     _messages.add(ChatMessage(
       text: '🎉 Appointment Booked Successfully!\n\n'
           '👨‍⚕️ Doctor: Dr. ${doctor.name}'
           '${doctor.specialization != null ? " (${doctor.specialization})" : ""}\n'
           '📅 Date: ${appt.dateLabel}\n'
           '🕐 Time: ${appt.timeSlot}\n'
-          '📋 Reason: ${appt.symptoms.isNotEmpty ? appt.symptoms.join(", ") : "General consultation"}\n\n'
+          '📋 Reason: $symptomsText\n\n'
           'A confirmation has been sent to you. Please arrive 10 minutes early. 😊',
       isUser:  false,
       actions: ['appointment_confirmed'],
@@ -336,6 +341,11 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> _sendBookingNotifications(DoctorModel doctor, AppointmentSlot appt) async {
+    // Fix null safety: check if symptoms is not null before accessing isNotEmpty
+    final symptomsText = (appt.symptoms?.isNotEmpty ?? false)
+        ? appt.symptoms!.join(", ")
+        : "General consultation";
+
     // Notify PATIENT
     await NotificationService.showQueueStatusNotification(
       title: '✅ Appointment Confirmed!',
@@ -363,7 +373,7 @@ class ChatProvider extends ChangeNotifier {
       patientName: _patient!.name,
       message:     '📅 New appointment: ${_patient!.name} booked '
           '${appt.dateLabel} at ${appt.timeSlot}. '
-          'Reason: ${appt.symptoms.isNotEmpty ? appt.symptoms.join(", ") : "General consultation"}',
+          'Reason: $symptomsText',
       type:        'appointment_booked',
       read:        false,
       createdAt:   DateTime.now(),
