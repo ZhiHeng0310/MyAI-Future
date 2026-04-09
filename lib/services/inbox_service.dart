@@ -191,6 +191,32 @@ class InboxService extends ChangeNotifier {
     await NotificationService.showMedicationReminder(medicationName, dosage);
   }
 
+  static Future<void> sendReminder({
+    required String userId,
+    required String medicationName,
+    required String dosage,
+    String? medicationId,
+  }) async {
+    final notification = NotificationModel(
+      id: '',
+      userId: userId,
+      title: '💊 Missed Medication',
+      message:
+      'Please take $medicationName ($dosage) — scheduled for $dosage',
+      type: NotificationType.medication,
+      timestamp: DateTime.now(),
+      metadata: {
+        'medicationId': medicationId,
+        'medicationName': medicationName,
+        'dosage': dosage,
+      },
+    );
+    await _saveAndNotify(notification);
+
+    // Also trigger OS notification
+    await NotificationService.showMedicationReminder(medicationName, dosage);
+  }
+
   /// Queue update — navigates to queue or appointments screen
   static Future<void> sendQueueNotification({
     required String userId,

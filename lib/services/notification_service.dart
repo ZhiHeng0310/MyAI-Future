@@ -270,6 +270,32 @@ class NotificationService {
     );
   }
 
+  static Future<void> showReminder(
+      String medName, String dosage, String time) async {
+    if (kIsWeb) {
+      debugPrint('Web: Missed dose for $medName ($dosage)');
+      return;
+    }
+    await init();
+    await _plugin.show(
+      id: 10000 + _stableId('remind_${medName}_$time'),
+      title: '💊 Missed Medication',
+      body:  'Please take $medName ($dosage) — scheduled for $time',
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          'careloop_meds', 'Medication Reminders',
+          channelDescription: 'Reminders to take medication on time',
+          importance: Importance.max, priority: Priority.max,
+          icon: '@mipmap/ic_launcher', playSound: true,
+          // Use a distinct sound/style for missed doses
+          styleInformation: BigTextStyleInformation(
+            'Please take $medName ($dosage) — scheduled for $time',
+          ),
+        ),
+      ),
+    );
+  }
+
   // ── Generic immediate reminder ─────────────────────────────────────────────
   static Future<void> showImmediateReminder(String message) async {
     if (kIsWeb) { debugPrint('Web reminder: $message'); return; }

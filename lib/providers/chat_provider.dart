@@ -512,10 +512,17 @@ class ChatProvider extends ChangeNotifier {
       // Agentic: fire reminders for each missed medication
       if (medStatus != null && !medStatus.noMeds && !medStatus.allTaken) {
         for (final med in medStatus.missed) {
-          await NotificationService.showMedicationReminder(
-              med.name, med.dosage);
+
+          for (final time in med.reminderTimes) {
+            await NotificationService.showReminder(
+              med.name,
+              med.dosage,
+              time,
+            );
+          }
+
           if (_patient != null) {
-            await InboxService.sendMedicationReminder(
+            await InboxService.sendReminder(
               userId: _patient!.id,
               medicationName: med.name,
               dosage: med.dosage,
@@ -689,14 +696,19 @@ class ChatProvider extends ChangeNotifier {
           '${s.all.map((m) => '✓ ${m.name} (${m.dosage})').join('\n')}\n\n'
           'Great job keeping up with your medication schedule! 💊';
     }
-    if (s.missed.isNotEmpty) {
-      final missedList = s.missed
+    final untaken =
+      s.all.where((m) => !s.taken.any((t) => t.id == m.id)).toList();
+
+    if (untaken.isNotEmpty) {
+      final list = untaken
           .map((m) => '⚠️ ${m.name} (${m.dosage}) - ${m.frequency}')
           .join('\n');
-      return '⚠️ You missed ${s.missed.length} medication(s). Please take them now:\n\n'
-          '$missedList\n\n'
-          'I\'ve sent you a reminder notification. Please take them as soon as possible! 💊';
+
+      return '⚠️ You haven\'t taken ${untaken.length} medication(s) yet:\n\n'
+          '$list\n\n'
+          'Please remember to take them according to schedule. 💊';
     }
+
     if (s.nextMedication != null && s.nextMedicationTime != null) {
       final next = s.nextMedication!;
       return '📋 Your next upcoming medication:\n\n'
