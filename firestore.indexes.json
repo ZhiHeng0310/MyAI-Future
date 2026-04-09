@@ -1,0 +1,58 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "slots",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "patientId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "date", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionId": "slots",
+      "fields": [
+        {"fieldPath": "dateKey", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "timeSlot", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionId": "health_alerts",
+      "fields": [
+        {"fieldPath": "doctorId", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionId": "health_alerts",
+      "fields": [
+        {"fieldPath": "doctorId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionId": "medications",
+      "fields": [
+        {"fieldPath": "patientId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionId": "medications",
+      "fields": [
+        {"fieldPath": "patientId", "order": "ASCENDING"},
+        {"fieldPath": "doctorId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionId": "notifications",
+      "fields": [
+        {"fieldPath": "userId", "order": "ASCENDING"},
+        {"fieldPath": "timestamp", "order": "DESCENDING"}
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
