@@ -74,7 +74,11 @@ class MedStatusResult {
     this.nextMedicationTime,
   });
 
-  bool get allTaken => missed.isEmpty && all.isNotEmpty;
+  /// True only when every active medication has been taken today and none missed
+  bool get allTaken =>
+      all.isNotEmpty &&
+          missed.isEmpty &&
+          taken.length == all.length;
   bool get noMeds => all.isEmpty;
   double get adherenceRate =>
       all.isEmpty ? 1.0 : taken.length / all.length;

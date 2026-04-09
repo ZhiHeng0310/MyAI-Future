@@ -177,8 +177,10 @@ class GeminiService {
         safetySettings: [
           SafetySetting(HarmCategory.harassment, HarmBlockThreshold.medium),
           SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.medium),
-          SafetySetting(HarmCategory.sexuallyExplicit, HarmBlockThreshold.medium),
-          SafetySetting(HarmCategory.dangerousContent, HarmBlockThreshold.medium),
+          SafetySetting(
+              HarmCategory.sexuallyExplicit, HarmBlockThreshold.medium),
+          SafetySetting(
+              HarmCategory.dangerousContent, HarmBlockThreshold.medium),
         ],
         systemInstruction: Content.text(_buildSystemPrompt()),
       );
@@ -199,29 +201,18 @@ class GeminiService {
 
   String _buildSystemPrompt() {
     if (role == GeminiRole.patient) {
-      return '''You are CareLoop AI, a friendly healthcare assistant helping patient $_userName.
+      return '''You are CareLoop AI, a friendly healthcare assistant for patient $_userName.
 
 PATIENT CONTEXT:
 - Name: $_userName
 - Diagnosis: $_diagnosis
 - Days since last visit: $_daysSinceVisit
 - Medications: ${_medications?.join(', ') ?? 'None'}
-${_prescribingDoctors != null && _prescribingDoctors!.isNotEmpty ? '- Prescribing Doctors: ${_prescribingDoctors!.join(', ')}' : '- No doctors have prescribed medications yet'}
+${_prescribingDoctors != null && _prescribingDoctors!.isNotEmpty ? '- Prescribing Doctors: ${_prescribingDoctors!.join(', ')}' : '- No doctors assigned yet'}
 
-CORE RELATIONSHIP RULE:
-- Patient is linked to doctors ONLY through medication prescriptions
-- A patient can have multiple prescribing doctors
+YOU MUST ALWAYS RESPOND WITH ONLY VALID JSON. ABSOLUTELY NO TEXT BEFORE OR AFTER THE JSON BLOCK.
 
-YOUR CAPABILITIES:
-
-1. **Medication Check** - User asks "did I take my meds", "have I taken my pills", "medication status"
-2. **Book Appointment** - User asks to book, schedule, or see a doctor  
-3. **I Feel Unwell** - User says they feel sick, unwell, have pain, or symptoms
-4. **Scan Bills** - User uploads a medication bill image
-
-CRITICAL: You MUST respond with ONLY valid JSON. No text before or after the JSON block.
-
-RESPONSE FORMAT (ALWAYS return this exact JSON structure):
+RESPONSE FORMAT (return this exact structure every single time):
 {
   "message": "Your friendly response text here",
   "actions": [],
@@ -234,28 +225,35 @@ RESPONSE FORMAT (ALWAYS return this exact JSON structure):
   "document_analysis": null
 }
 
-RULES:
-- Set "check_medications": true when user asks about medication status/adherence
-- Set "appointment_intent": true when user wants to book an appointment
-- Set "feel_unwell": true when user reports symptoms or feeling unwell
-- Set "risk": "high" for severe symptoms (chest pain, can't breathe, emergency)
-- Set "risk": "medium" for moderate symptoms (fever, pain, discomfort)
-- Set "risk": "low" for general questions
-- Add "alert_all_doctors" to actions when feel_unwell is true
-- Add "book_appointment" to actions when appointment_intent is true
-- Extract symptoms into "appointment_symptoms" and "unwell_symptoms"
+=== CAPABILITY 1: FEEL UNWELL ===
+Trigger when patient mentions ANY of these: sick, unwell, pain, ache, fever, headache, nausea, vomiting, dizzy, tired, fatigue, cough, sore throat, chest pain, breathless, hurt, hurts, not feeling well, feeling bad, stomach ache, rash, swollen, bleeding, weak, burning, itching.
 
-For document/bill analysis, return document_analysis:
-{
-  "type": "medication_bill",
-  "summary": "Summary text",
-  "items": [{"name": "Med name", "dosage": "10mg", "frequency": "2x daily", "price": "RM 25.00", "instructions": "Take with food"}],
-  "key_notes": ["Important note"],
-  "total_cost": "RM 150.00",
-  "patient_advice": "Advice text"
-}
+When triggered YOU MUST:
+- Set "feel_unwell": true
+- Set "actions": ["alert_all_doctors"]
+- Set "risk": "high" for chest pain / breathing difficulty / unconscious / emergency
+- Set "risk": "medium" for fever / moderate pain / vomiting / dizziness
+- Set "risk": "low" for mild symptoms like a runny nose or slight tiredness
+- List the specific symptoms mentioned in "unwell_symptoms"
+- Write an empathetic message confirming the doctor alert was triggered
 
-BE FRIENDLY AND EMPATHETIC. Keep message text conversational.''';
+Good message example:
+"I'm sorry to hear you're feeling unwell. I've immediately alerted your doctor(s) about your [symptoms]. They will review and respond with advice shortly. Please rest and stay hydrated in the meantime. 🏥"
+
+=== CAPABILITY 2: MEDICATION CHECK ===
+Trigger when patient asks if they took meds, medication status, pill reminders.
+- Set "check_medications": true
+
+=== CAPABILITY 3: BOOK APPOINTMENT ===
+Trigger when patient wants to book, schedule, or see a doctor.
+- Set "appointment_intent": true
+- Set "actions": ["book_appointment"]
+- Extract any reason/symptoms into "appointment_symptoms"
+
+=== GENERAL ===
+For greetings or general health questions: respond warmly. All flags false. risk = "low".
+
+REMEMBER: Return ONLY the JSON object. Nothing else.''';
     } else {
       return '''You are CareLoop AI, assisting Dr. $_userName in managing patients.
 
@@ -264,15 +262,7 @@ DOCTOR CONTEXT:
 - Doctor ID: $_doctorId
 - Patients (via prescriptions): ${_patientSummaries?.join('; ') ?? 'None'}
 
-CORE RULE: Doctor can ONLY see patients they have prescribed medication to.
-
-YOUR CAPABILITIES:
-1. **How Are My Patients Today?** - review_my_patients action
-2. **Check Patient Status** - check_patient_status action  
-3. **Send Appointment Request** - send_appointment_request action
-4. **Review Recent Alerts** - review_recent_alerts action
-
-CRITICAL: You MUST respond with ONLY valid JSON. No text before or after.
+YOU MUST ALWAYS RESPOND WITH ONLY VALID JSON. NO TEXT BEFORE OR AFTER.
 
 RESPONSE FORMAT:
 {
@@ -283,15 +273,15 @@ RESPONSE FORMAT:
 }
 
 RULES:
-- Add "review_my_patients" to actions when doctor asks about patient status/overview
-- Add "check_patient_status" to actions when doctor asks about a specific patient
-- Add "send_appointment_request" to actions when doctor wants to request appointment
-- Add "review_recent_alerts" to actions when doctor wants to see recent alerts
-- Add "send_patient_message" to actions when doctor wants to send a message
+- Add "review_my_patients" when doctor asks about patient status/overview
+- Add "check_patient_status" when doctor asks about a specific patient
+- Add "send_appointment_request" when doctor wants to request an appointment
+- Add "review_recent_alerts" when doctor wants to see recent alerts
+- Add "send_patient_message" when doctor wants to send a message
 - Set "patient_id" to patient name/id hint if doctor mentions a specific patient
 - Set "send_to_patient" to the message text when sending to patient
 
-BE PROFESSIONAL AND CONCISE.''';
+BE PROFESSIONAL AND CONCISE. Return ONLY the JSON object.''';
     }
   }
 
@@ -329,16 +319,19 @@ BE PROFESSIONAL AND CONCISE.''';
     try {
       final response = await _chat!.sendMessage(Content.text(text));
       final responseText = response.text ?? '';
-      debugPrint('🤖 Gemini raw response: ${responseText.substring(0, responseText.length.clamp(0, 200))}');
+      debugPrint(
+          '🤖 Gemini raw: ${responseText.substring(0, responseText.length.clamp(0, 300))}');
       return _parseResponse(responseText);
     } catch (e) {
-      debugPrint('❌ Gemini sendMessage error: $e');
-      return GeminiResponse(
-        message: _getFallbackResponse(text),
-        isError: false,
-      );
+      debugPrint('❌ Gemini sendMessage error: $e — using heuristic fallback');
+      // Fallback runs heuristics on the original USER text so feel_unwell still fires
+      return _parseTextHeuristically(text);
     }
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SCAN BILLS — strict structured prompt, returns DocumentAnalysis
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<GeminiResponse> sendMessageWithImage(
       String text,
@@ -355,9 +348,15 @@ BE PROFESSIONAL AND CONCISE.''';
     try {
       final imagePart = DataPart(mimeType, imageBytes);
 
-      final scanPrompt = text.isEmpty || text.length < 20
-          ? '''Please analyze this medication bill or prescription image.
-Return ONLY valid JSON in this exact format:
+      const scanPrompt = '''
+You are analyzing a medication bill or pharmacy receipt.
+
+YOUR TASK:
+1. Find every medication or item on the bill.
+2. For each item extract: name, dosage/strength, quantity/frequency, price.
+3. Find the grand total.
+
+Return ONLY this JSON (absolutely no text before or after):
 {
   "message": "Here is the summary of your medication bill:",
   "actions": [],
@@ -369,14 +368,31 @@ Return ONLY valid JSON in this exact format:
   "unwell_symptoms": [],
   "document_analysis": {
     "type": "medication_bill",
-    "summary": "Clear summary of the bill",
-    "items": [{"name": "Med name", "dosage": "dosage", "frequency": "frequency", "price": "price", "instructions": "instructions"}],
-    "key_notes": ["important note"],
-    "total_cost": "total amount",
-    "patient_advice": "advice for patient"
+    "summary": "One or two sentences summarising the bill. Example: This bill contains 3 medications totalling RM 85.50.",
+    "items": [
+      {
+        "name": "Full medication name (brand and/or generic)",
+        "dosage": "Strength e.g. 500mg",
+        "frequency": "Quantity or frequency e.g. 30 tabs / twice daily",
+        "price": "Price for this item e.g. RM 25.00",
+        "instructions": "Usage instruction if printed on bill, else empty string"
+      }
+    ],
+    "key_notes": [
+      "Clinic or pharmacy name if visible",
+      "Date of bill if visible",
+      "Any other important note"
+    ],
+    "total_cost": "Grand total e.g. RM 85.50",
+    "patient_advice": "One sentence reminding patient to take medications as prescribed and to store them properly."
   }
-}'''
-          : text;
+}
+
+Rules:
+- If a field is not visible in the image use an empty string "".
+- If the image is NOT a medication bill, set type to "document" and describe what you see in summary.
+- Do NOT include any text outside the JSON block.
+''';
 
       final prompt = Content.multi([
         TextPart(scanPrompt),
@@ -385,18 +401,23 @@ Return ONLY valid JSON in this exact format:
 
       final response = await _model!.generateContent([prompt]);
       final responseText = response.text ?? '';
+      debugPrint(
+          '🧾 Scan raw: ${responseText.substring(0, responseText.length.clamp(0, 400))}');
       return _parseResponse(responseText);
     } catch (e) {
       debugPrint('❌ Gemini image error: $e');
       return GeminiResponse(
-        message: 'I analyzed your document. Please ensure the image is clear and well-lit.',
+        message:
+        '📄 I had trouble reading that image. Please try again with a clearer, well-lit photo.',
         documentAnalysis: DocumentAnalysis(
           type: 'document',
-          summary: 'Unable to analyze document clearly. Please retake with better lighting.',
+          summary:
+          'Unable to analyze the document clearly. Please retake with better lighting.',
           items: [],
           keyNotes: [
             'Retake photo with better lighting',
-            'Ensure all text is visible'
+            'Ensure all text is clearly visible',
+            'Avoid glare or shadows on the bill',
           ],
           patientAdvice: 'Please take a clearer photo and try again.',
         ),
@@ -405,18 +426,16 @@ Return ONLY valid JSON in this exact format:
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // RESPONSE PARSING — uses dart:convert for real JSON parsing
+  // RESPONSE PARSING
   // ══════════════════════════════════════════════════════════════════════════
 
   GeminiResponse _parseResponse(String responseText) {
     try {
-      // Strip markdown code fences if present
       String cleaned = responseText.trim();
       cleaned = cleaned.replaceAll(RegExp(r'```json\s*'), '');
       cleaned = cleaned.replaceAll(RegExp(r'```\s*'), '');
       cleaned = cleaned.trim();
 
-      // Extract JSON object
       final startIdx = cleaned.indexOf('{');
       final endIdx = cleaned.lastIndexOf('}');
       if (startIdx != -1 && endIdx != -1 && endIdx > startIdx) {
@@ -428,14 +447,12 @@ Return ONLY valid JSON in this exact format:
           actions:
           (json['actions'] as List<dynamic>?)?.cast<String>() ?? [],
           risk: _parseRisk(json['risk'] as String?),
-          appointmentIntent:
-          json['appointment_intent'] as bool? ?? false,
+          appointmentIntent: json['appointment_intent'] as bool? ?? false,
           appointmentSymptoms:
           (json['appointment_symptoms'] as List<dynamic>?)
               ?.cast<String>() ??
               [],
-          checkMedications:
-          json['check_medications'] as bool? ?? false,
+          checkMedications: json['check_medications'] as bool? ?? false,
           feelUnwell: json['feel_unwell'] as bool? ?? false,
           unwellSymptoms:
           (json['unwell_symptoms'] as List<dynamic>?)?.cast<String>() ??
@@ -450,10 +467,9 @@ Return ONLY valid JSON in this exact format:
         );
       }
     } catch (e) {
-      debugPrint('❌ JSON parse error: $e — falling back to heuristic');
+      debugPrint('❌ JSON parse error: $e — heuristic fallback');
     }
 
-    // Fallback: heuristic parsing
     return _parseTextHeuristically(responseText);
   }
 
@@ -469,11 +485,13 @@ Return ONLY valid JSON in this exact format:
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // HEURISTIC PARSING — fallback when JSON parsing fails
+  // HEURISTIC FALLBACK
+  // Important: called with the original USER text when Gemini fails,
+  // so feel_unwell detection still works even without a Gemini response.
   // ══════════════════════════════════════════════════════════════════════════
 
   GeminiResponse _parseTextHeuristically(String text) {
-    final lowerText = text.toLowerCase();
+    final lower = text.toLowerCase();
     final actions = <String>[];
     var risk = RiskLevel.low;
     var appointmentIntent = false;
@@ -482,76 +500,97 @@ Return ONLY valid JSON in this exact format:
     final unwellSymptoms = <String>[];
     final appointmentSymptoms = <String>[];
 
-    // Medication check
-    if (lowerText.contains('medication') ||
-        lowerText.contains('medicine') ||
-        lowerText.contains('pills') ||
-        lowerText.contains('meds') ||
-        lowerText.contains('taken') ||
-        lowerText.contains('take my')) {
-      checkMedications = true;
-      actions.add('check_medications');
+    // ── Feel unwell keywords ──────────────────────────────────────────────
+    const unwellKeywords = [
+      'sick', 'unwell', ' pain', 'ache', 'aching', 'fever', 'headache',
+      'nausea', 'nauseous', 'vomit', 'dizzy', 'dizziness', 'fatigue',
+      'tired', 'weak', 'weakness', 'cough', 'sore throat', 'chest pain',
+      'shortness of breath', 'breathless', 'not feeling well', 'feel bad',
+      'feeling bad', 'feel terrible', 'feeling terrible', 'hurt', 'hurts',
+      'hurting', 'not well', 'feeling sick', 'feel sick', 'feel unwell',
+      'not feeling good', 'feeling poorly', 'stomach ache', 'backache',
+      'rash', 'swollen', 'bleeding', 'burning', 'itching',
+    ];
+
+    for (final kw in unwellKeywords) {
+      if (lower.contains(kw)) {
+        feelUnwell = true;
+        // Add readable symptom (trim leading space)
+        unwellSymptoms.add(kw.trim());
+        break;
+      }
     }
 
-    // Appointment intent
-    if (lowerText.contains('appointment') ||
-        lowerText.contains('book') ||
-        lowerText.contains('schedule') ||
-        lowerText.contains('see the doctor') ||
-        lowerText.contains('consult')) {
+    if (feelUnwell) {
+      actions.add('alert_all_doctors');
+      if (lower.contains('chest pain') ||
+          lower.contains('breathless') ||
+          lower.contains('shortness of breath') ||
+          lower.contains('emergency') ||
+          lower.contains('severe')) {
+        risk = RiskLevel.high;
+      } else if (lower.contains('fever') ||
+          lower.contains('pain') ||
+          lower.contains('vomit') ||
+          lower.contains('nausea') ||
+          lower.contains('dizzy')) {
+        risk = RiskLevel.medium;
+      } else {
+        risk = RiskLevel.low;
+      }
+    }
+
+    // ── Medication check ──────────────────────────────────────────────────
+    if (!feelUnwell &&
+        (lower.contains('medication') ||
+            lower.contains('medicine') ||
+            lower.contains('pills') ||
+            lower.contains('meds') ||
+            lower.contains('taken') ||
+            lower.contains('take my'))) {
+      checkMedications = true;
+    }
+
+    // ── Appointment ───────────────────────────────────────────────────────
+    if (lower.contains('appointment') ||
+        lower.contains('book') ||
+        lower.contains('schedule') ||
+        lower.contains('see the doctor') ||
+        lower.contains('consult')) {
       appointmentIntent = true;
       actions.add('book_appointment');
     }
 
-    // Feel unwell
-    if (lowerText.contains('feel unwell') ||
-        lowerText.contains('not feeling well') ||
-        lowerText.contains('feeling sick') ||
-        lowerText.contains('i\'m sick') ||
-        lowerText.contains('i feel sick') ||
-        lowerText.contains('something\'s wrong') ||
-        lowerText.contains('pain') ||
-        lowerText.contains('fever') ||
-        lowerText.contains('headache') ||
-        lowerText.contains('nausea')) {
-      feelUnwell = true;
-      actions.add('alert_all_doctors');
-    }
-
-    // Risk assessment
-    if (lowerText.contains('severe') ||
-        lowerText.contains('emergency') ||
-        lowerText.contains('chest pain') ||
-        lowerText.contains('can\'t breathe') ||
-        lowerText.contains('very high fever') ||
-        lowerText.contains('unconscious')) {
-      risk = RiskLevel.high;
-    } else if (lowerText.contains('pain') ||
-        lowerText.contains('fever') ||
-        lowerText.contains('worried') ||
-        lowerText.contains('concerned') ||
-        lowerText.contains('headache') ||
-        lowerText.contains('nausea')) {
-      risk = RiskLevel.medium;
-    }
-
-    // Doctor role actions
+    // ── Doctor role ───────────────────────────────────────────────────────
     if (role == GeminiRole.doctor) {
-      if (lowerText.contains('how are my patients') ||
-          lowerText.contains('patient status') ||
-          lowerText.contains('my patients')) {
+      if (lower.contains('how are my patients') ||
+          lower.contains('patient status') ||
+          lower.contains('my patients')) {
         actions.add('review_my_patients');
       }
-      if (lowerText.contains('recent alert') ||
-          lowerText.contains('review alert')) {
+      if (lower.contains('recent alert') ||
+          lower.contains('review alert')) {
         actions.add('review_recent_alerts');
       }
     }
 
+    // Build a sensible message when we know patient feels unwell
+    String message = text.isNotEmpty
+        ? text
+        : 'I\'m here to help! How can I assist you today?';
+
+    if (feelUnwell) {
+      final symptomText =
+      unwellSymptoms.isNotEmpty ? unwellSymptoms.join(', ') : 'your symptoms';
+      message =
+      'I\'m sorry to hear you\'re not feeling well ($symptomText). '
+          'I\'ve immediately alerted your doctor(s). '
+          'They will review and send you advice shortly. '
+          'Please rest and stay hydrated in the meantime. 🏥';
+    }
+
     return GeminiResponse(
-      message: text.isNotEmpty
-          ? text
-          : 'I\'m here to help! How can I assist you today?',
+      message: message,
       actions: actions,
       risk: risk,
       appointmentIntent: appointmentIntent,
@@ -560,41 +599,6 @@ Return ONLY valid JSON in this exact format:
       feelUnwell: feelUnwell,
       unwellSymptoms: unwellSymptoms,
     );
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // FALLBACK RESPONSES
-  // ══════════════════════════════════════════════════════════════════════════
-
-  String _getFallbackResponse(String userMessage) {
-    final lower = userMessage.toLowerCase();
-
-    if (lower.contains('appointment') || lower.contains('book')) {
-      return 'I can help you book an appointment! Please select a date from the calendar below.';
-    }
-    if (lower.contains('medication') ||
-        lower.contains('meds') ||
-        lower.contains('pills')) {
-      return 'Let me check your medication status for you.';
-    }
-    if (lower.contains('unwell') ||
-        lower.contains('sick') ||
-        lower.contains('pain') ||
-        lower.contains('fever')) {
-      return 'I\'m sorry to hear you\'re not feeling well. I\'ll alert your doctors so they can provide advice.';
-    }
-    if (lower.contains('scan') ||
-        lower.contains('bill') ||
-        lower.contains('prescription')) {
-      return 'Please tap the 📎 button and upload your medical document. I\'ll analyze it for you.';
-    }
-
-    return 'I\'m here to help! I can:\n'
-        '📅 Book appointments\n'
-        '💊 Check your medications\n'
-        '🚨 Alert your doctors if you feel unwell\n'
-        '📄 Scan medication bills\n\n'
-        'What would you like to do?';
   }
 
   // ══════════════════════════════════════════════════════════════════════════
