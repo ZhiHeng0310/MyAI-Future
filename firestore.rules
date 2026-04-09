@@ -2,48 +2,167 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Patients: only the owner can read/write their own record
+    // Helper functions for common auth checks
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isPatient(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function isDoctor(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function isDoctorRole() {
+      return request.auth != null && request.auth.token.role == 'doctor';
+    }
+
+    function isStaff() {
+      return request.auth != null && (request.auth.token.role == 'staff' || request.auth.token.role == 'doctor');
+    }
+
+    // ── PATIENTS: owner and doctors can read; owner can write ────────────────
     match /patients/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if isPatient(userId) || isDoctorRole();
+      allow write: if isPatient(userId);
+      allow create: if isSignedIn() && request.resource.data.id == request.auth.uid;
+      allow update: if isPatient(userId);
+      allow delete: if isPatient(userId);
     }
 
-    // Queue: authenticated users can read; only they can write their own entry
-    match /queues/{clinicId}/entries/{entryId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null
-        && request.resource.data.patientId == request.auth.uid;
-      allow update: if request.auth != null
-        && (resource.data.patientId == request.auth.uid
-            || request.auth.token.role == 'staff');
+    // ── DOCTORS: read by all authenticated; doctor can write own ──────────────
+    match /doctors/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isDoctor(docId);
+      allow create: if isSignedIn() && request.resource.data.id == request.auth.uid;
+      allow update: if isDoctor(docId);
+      allow delete: if isDoctor(docId);
     }
 
-    // Medications: only the patient can read; staff can write
+    // ── MEDICATIONS: patient reads own; doctor reads/writes prescribed ────────
     match /medications/{medId} {
-      allow read: if request.auth != null
-        && resource.data.patientId == request.auth.uid;
-      allow write: if request.auth != null
-        && request.auth.token.role == 'staff';
+      allow read: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        resource.data.doctorId == request.auth.uid ||
+        isDoctorRole()
+      );
+      allow create: if isDoctorRole();
+      allow update: if isDoctorRole() || (
+        isPatient(resource.data.patientId) && 
+        request.resource.data.diff(resource.data).affectedKeys().size() == 1 &&
+        'takenSlots' in request.resource.data.diff(resource.data).affectedKeys()
+      );
+      allow delete: if isDoctorRole();
     }
 
-    // Dose logs: patient creates their own logs
+    // ── DOSE LOGS: patient creates; patient/doctor read ─────────────────────
     match /dose_logs/{logId} {
-      allow create: if request.auth != null;
-      allow read: if request.auth != null;
+      allow create: if isSignedIn();
+      allow read: if isSignedIn();
+      allow list: if isSignedIn();
+      allow update, delete: if false;
     }
 
-    // Check-ins: patient writes, staff reads
+    // ── CHECK-INS: patient creates; both can read ──────────────────────────────
     match /checkins/{checkInId} {
-      allow create: if request.auth != null;
-      allow read: if request.auth != null
-        && (resource.data.patientId == request.auth.uid
-            || request.auth.token.role == 'staff');
+      allow create: if isSignedIn() && request.resource.data.patientId == request.auth.uid;
+      allow read: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        isDoctorRole()
+      );
+      allow list: if isSignedIn();
+      allow update, delete: if false;
     }
 
-    // Alerts: authenticated users create; staff resolves
+    // ── HEALTH ALERTS: patient creates (triggers AI); doctor reads/updates ────
+    match /health_alerts/{alertId} {
+      allow create: if isSignedIn() && request.resource.data.patientId == request.auth.uid;
+      allow read: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        resource.data.doctorId == request.auth.uid ||
+        isDoctorRole()
+      );
+      allow update: if isDoctorRole() && (
+        resource.data.doctorId == request.auth.uid ||
+        request.auth.token.role == 'staff'
+      );
+      allow list: if isSignedIn();
+      allow delete: if isDoctorRole();
+    }
+
+    // ── DOCTOR INBOX: doctor reads/updates own; system can create ────────────
+    match /doctor_inbox/{doctorId}/messages/{messageId} {
+      allow read: if isDoctor(doctorId);
+      allow create: if isSignedIn();
+      allow update: if isDoctor(doctorId);
+      allow list: if isDoctor(doctorId);
+      allow delete: if isDoctor(doctorId);
+    }
+
+    // ── PATIENT INBOX: patient reads own; system can create ──────────────────
+    match /patient_inbox/{patientId}/messages/{messageId} {
+      allow read: if isPatient(patientId);
+      allow create: if isSignedIn();
+      allow update: if isPatient(patientId);
+      allow list: if isPatient(patientId);
+      allow delete: if isPatient(patientId);
+    }
+
+    // ── APPOINTMENTS: doctor manages; patient can read own ───────────────────
+    match /appointments/{doctorId}/slots/{slotId} {
+      allow read: if isSignedIn() && (
+        isDoctor(doctorId) ||
+        (isDoctorRole() && resource.data.patientId == request.auth.uid)
+      );
+      allow create: if isDoctor(doctorId) || isDoctorRole();
+      allow update: if isDoctor(doctorId) || isDoctorRole();
+      allow list: if isSignedIn();
+      allow delete: if isDoctor(doctorId) || isDoctorRole();
+    }
+
+    // ── QUEUES: patients join; staff manages ───────────────────────────────────
+    match /queues/{clinicId}/entries/{entryId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && 
+        request.resource.data.patientId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.patientId ||
+        isStaff()
+      );
+      allow list: if isSignedIn();
+      allow delete: if isStaff() || isPatient(resource.data.patientId);
+    }
+
+    // ── PUSH NOTIFICATIONS: system writes (for Cloud Functions) ───────────────
+    match /push_notifications/{notifId} {
+      allow read: if false;  // Not read by clients
+      allow create: if isSignedIn();  // Any authenticated user can trigger
+      allow update, delete: if false;
+    }
+
+    // ── NOTIFICATIONS (in-app inbox): user can create/read/update own ────────
+    match /notifications/{userId}/messages/{notificationId} {
+      allow read: if isPatient(userId) || isDoctor(userId);
+      allow create: if isSignedIn();
+      allow update: if isPatient(userId) || isDoctor(userId) || isStaff();
+      allow list: if isPatient(userId) || isDoctor(userId);
+      allow delete: if isPatient(userId) || isDoctor(userId);
+    }
+
+    // ── LEGACY ALERTS: keep for backward compatibility ──────────────────────
     match /alerts/{alertId} {
-      allow create: if request.auth != null;
-      allow read, update: if request.auth != null
-        && request.auth.token.role == 'staff';
+      allow create: if isSignedIn();
+      allow read: if isSignedIn();
+      allow update: if isStaff();
+      allow list: if isSignedIn();
+      allow delete: if isStaff();
+    }
+
+    // ── DENY ALL OTHER ACCESS ──────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

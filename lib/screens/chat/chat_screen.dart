@@ -863,7 +863,7 @@ class _MedStatusCard extends StatelessWidget {
                       status.allTaken ? 'All Medications Taken Today ✓' : 'Medication Status — $pct%',
                       style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 13, color: const Color(0xFF0D1B2A)),
                     ),
-                    Text('${status.taken.length}/${status.all.length} doses taken today',
+                    Text('${status.takenSlots}/${status.totalSlots} doses taken today',
                         style: GoogleFonts.dmSans(fontSize: 11, color: const Color(0xFF667085))),
                   ],
                 ),

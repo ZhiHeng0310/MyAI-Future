@@ -33,12 +33,22 @@ class AuthProvider extends ChangeNotifier {
       if (u != null) {
         _profileLoading = true;
         notifyListeners();
-        await _loadProfile(u.uid);
+        try {
+          await _loadProfile(u.uid);
+        } catch (e) {
+          debugPrint('AuthProvider: profile load failed: $e');
+        }
 
-        // ── Save FCM token for push notifications ──────────────────────────
-        await NotificationService.init();
-        final collection = _role == 'doctor' ? 'doctors' : 'patients';
-        await NotificationService.saveFcmToken(u.uid, collection);
+        // Initialize notifications in the background so login is not blocked.
+        Future(() async {
+          try {
+            await NotificationService.init();
+            final collection = _role == 'doctor' ? 'doctors' : 'patients';
+            await NotificationService.saveFcmToken(u.uid, collection);
+          } catch (e) {
+            debugPrint('AuthProvider: notification init failed: $e');
+          }
+        });
 
         _profileLoading = false;
       } else {

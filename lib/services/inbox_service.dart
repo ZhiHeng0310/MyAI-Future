@@ -195,20 +195,24 @@ class InboxService extends ChangeNotifier {
     required String userId,
     required String medicationName,
     required String dosage,
+    String? scheduledTime,
     String? medicationId,
   }) async {
+    final scheduledLabel = scheduledTime ?? dosage;
+
     final notification = NotificationModel(
       id: '',
       userId: userId,
       title: '💊 Missed Medication',
       message:
-      'Please take $medicationName ($dosage) — scheduled for $dosage',
+      'Please take $medicationName ($dosage) — scheduled for $scheduledLabel',
       type: NotificationType.medication,
       timestamp: DateTime.now(),
       metadata: {
         'medicationId': medicationId,
         'medicationName': medicationName,
         'dosage': dosage,
+        'scheduledTime': scheduledTime,
       },
     );
     await _saveAndNotify(notification);

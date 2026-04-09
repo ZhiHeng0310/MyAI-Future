@@ -270,17 +270,31 @@ class NotificationService {
     );
   }
 
+  static String _formatScheduledTime(String rawTime) {
+    final parts = rawTime.split(':');
+    if (parts.isEmpty) return rawTime;
+
+    final hour = int.tryParse(parts[0]);
+    final minute = parts.length > 1 ? int.tryParse(parts[1]) : 0;
+    if (hour == null) return rawTime;
+
+    final formattedHour = hour.toString().padLeft(2, '0');
+    final formattedMinute = (minute ?? 0).toString().padLeft(2, '0');
+    return '$formattedHour:$formattedMinute';
+  }
+
   static Future<void> showReminder(
       String medName, String dosage, String time) async {
     if (kIsWeb) {
-      debugPrint('Web: Missed dose for $medName ($dosage)');
+      debugPrint('Web: Missed dose for $medName ($dosage) scheduled for $time');
       return;
     }
     await init();
+    final scheduledTime = _formatScheduledTime(time);
     await _plugin.show(
-      id: 10000 + _stableId('remind_${medName}_$time'),
+      id: 10000 + _stableId('remind_${medName}_$scheduledTime'),
       title: '💊 Missed Medication',
-      body:  'Please take $medName ($dosage) — scheduled for $time',
+      body:  'Please take $medName ($dosage) — scheduled for $scheduledTime',
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           'careloop_meds', 'Medication Reminders',
@@ -289,7 +303,7 @@ class NotificationService {
           icon: '@mipmap/ic_launcher', playSound: true,
           // Use a distinct sound/style for missed doses
           styleInformation: BigTextStyleInformation(
-            'Please take $medName ($dosage) — scheduled for $time',
+            'Please take $medName ($dosage) — scheduled for $scheduledTime',
           ),
         ),
       ),

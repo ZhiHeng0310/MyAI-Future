@@ -93,6 +93,13 @@ class CareLoopApp extends StatelessWidget {
     const grey  = Color(0xFF667085);
     return ThemeData(
       useMaterial3: true,
+      fontFamilyFallback: const [
+        'Segoe UI Emoji',
+        'Noto Color Emoji',
+        'Apple Color Emoji',
+        'EmojiOne Color',
+        'sans-serif',
+      ],
       colorScheme: ColorScheme.fromSeed(seedColor: brand),
       scaffoldBackgroundColor: const Color(0xFFF8FFFE),
       textTheme: GoogleFonts.dmSansTextTheme().copyWith(

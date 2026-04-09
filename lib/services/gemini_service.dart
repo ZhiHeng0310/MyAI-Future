@@ -330,35 +330,43 @@ BE PROFESSIONAL AND CONCISE. Return ONLY the JSON object.''';
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // SCAN BILLS — strict structured prompt, returns DocumentAnalysis
+  // SCAN BILLS — uses its OWN fresh model instance (never the chat session)
+  // Retries across multiple model names to survive 503 / high-demand errors.
   // ══════════════════════════════════════════════════════════════════════════
+
+  // Models tried in order. Only use the configured model with more retries.
+  static final List<String> _scanModels = [
+    AppConfig.geminiModel
+  ];
 
   Future<GeminiResponse> sendMessageWithImage(
       String text,
       Uint8List imageBytes,
       String mimeType,
       ) async {
-    if (!_initialized || _model == null) {
+    final apiKey = AppConfig.geminiApiKey;
+    if (apiKey.isEmpty) {
       return GeminiResponse(
-        message: 'I\'m having trouble connecting. Please try again.',
+        message: 'Gemini API key not configured. Please check env.json.',
         isError: true,
       );
     }
 
-    try {
-      final imagePart = DataPart(mimeType, imageBytes);
+    // The scan prompt — tells Gemini exactly what to extract.
+    const scanPrompt = '''
+Analyze the medical document or bill in this image.
 
-      const scanPrompt = '''
-You are analyzing a medication bill or pharmacy receipt.
+Extract every line item you can see. For each item record:
+- Exact name as printed
+- Dosage or strength (e.g. 500mg, 10mg/5ml) — empty string if not shown
+- Quantity or frequency (e.g. 30 tabs, twice daily) — empty string if not shown
+- Price for that item — empty string if not shown
 
-YOUR TASK:
-1. Find every medication or item on the bill.
-2. For each item extract: name, dosage/strength, quantity/frequency, price.
-3. Find the grand total.
+Also find the grand total, provider name, and date if visible.
 
-Return ONLY this JSON (absolutely no text before or after):
+Respond with ONLY valid JSON, no markdown fences, no preamble:
 {
-  "message": "Here is the summary of your medication bill:",
+  "message": "Here is the summary of your document:",
   "actions": [],
   "risk": "low",
   "appointment_intent": false,
@@ -368,61 +376,103 @@ Return ONLY this JSON (absolutely no text before or after):
   "unwell_symptoms": [],
   "document_analysis": {
     "type": "medication_bill",
-    "summary": "One or two sentences summarising the bill. Example: This bill contains 3 medications totalling RM 85.50.",
+    "summary": "Brief 1-2 sentence summary of what this document contains and the total amount.",
     "items": [
       {
-        "name": "Full medication name (brand and/or generic)",
-        "dosage": "Strength e.g. 500mg",
-        "frequency": "Quantity or frequency e.g. 30 tabs / twice daily",
-        "price": "Price for this item e.g. RM 25.00",
-        "instructions": "Usage instruction if printed on bill, else empty string"
+        "name": "item name here",
+        "dosage": "dosage here or empty string",
+        "frequency": "quantity/frequency here or empty string",
+        "price": "price here or empty string",
+        "instructions": "any printed instructions or empty string"
       }
     ],
     "key_notes": [
-      "Clinic or pharmacy name if visible",
-      "Date of bill if visible",
-      "Any other important note"
+      "Provider or clinic name if visible",
+      "Service date or bill date if visible",
+      "Any important note such as plan discounts or copay amounts"
     ],
-    "total_cost": "Grand total e.g. RM 85.50",
-    "patient_advice": "One sentence reminding patient to take medications as prescribed and to store them properly."
+    "total_cost": "grand total or patient share amount here",
+    "patient_advice": "One sentence of practical advice for the patient."
   }
 }
-
-Rules:
-- If a field is not visible in the image use an empty string "".
-- If the image is NOT a medication bill, set type to "document" and describe what you see in summary.
-- Do NOT include any text outside the JSON block.
 ''';
 
-      final prompt = Content.multi([
-        TextPart(scanPrompt),
-        imagePart,
-      ]);
+    final imagePart = DataPart(mimeType, imageBytes);
+    final promptContent = Content.multi([TextPart(scanPrompt), imagePart]);
 
-      final response = await _model!.generateContent([prompt]);
-      final responseText = response.text ?? '';
-      debugPrint(
-          '🧾 Scan raw: ${responseText.substring(0, responseText.length.clamp(0, 400))}');
-      return _parseResponse(responseText);
-    } catch (e) {
-      debugPrint('❌ Gemini image error: $e');
-      return GeminiResponse(
-        message:
-        '📄 I had trouble reading that image. Please try again with a clearer, well-lit photo.',
-        documentAnalysis: DocumentAnalysis(
-          type: 'document',
-          summary:
-          'Unable to analyze the document clearly. Please retake with better lighting.',
-          items: [],
-          keyNotes: [
-            'Retake photo with better lighting',
-            'Ensure all text is clearly visible',
-            'Avoid glare or shadows on the bill',
-          ],
-          patientAdvice: 'Please take a clearer photo and try again.',
-        ),
-      );
+    // Try each model in sequence; for each model, retry up to 5 times with exponential backoff.
+    for (final modelName in _scanModels) {
+      for (int attempt = 1; attempt <= 5; attempt++) {
+        try {
+          debugPrint('🧾 Trying scan model: $modelName (attempt $attempt)');
+
+          final scanModel = GenerativeModel(
+            model: modelName,
+            apiKey: apiKey,
+            generationConfig: GenerationConfig(
+              temperature: 0.2,   // low temp → more literal extraction
+              maxOutputTokens: 4096,
+            ),
+            safetySettings: [
+              SafetySetting(HarmCategory.harassment, HarmBlockThreshold.medium),
+              SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.medium),
+              SafetySetting(
+                  HarmCategory.sexuallyExplicit, HarmBlockThreshold.medium),
+              SafetySetting(
+                  HarmCategory.dangerousContent, HarmBlockThreshold.medium),
+            ],
+          );
+
+          final response = await scanModel
+              .generateContent([promptContent])
+              .timeout(const Duration(seconds: 30));
+
+          final responseText = response.text ?? '';
+          debugPrint('🧾 $modelName raw: ${responseText.substring(0, responseText.length.clamp(0, 400))}');
+
+          final parsed = _parseResponse(responseText);
+
+          // If we got a documentAnalysis back, we're done.
+          if (parsed.documentAnalysis != null) {
+            debugPrint('✅ Scan succeeded with $modelName');
+            return parsed;
+          }
+
+          // Parsed but no document_analysis — still return it (better than error).
+          debugPrint('⚠️ $modelName responded but no document_analysis; returning anyway');
+          return parsed;
+        } catch (e) {
+          final msg = e.toString();
+          if (attempt < 5 && (msg.contains('503') ||
+              msg.contains('UNAVAILABLE') ||
+              msg.contains('unavailable'))) {
+            final delaySeconds = 1 << (attempt - 1); // 1, 2, 4, 8, 16
+            debugPrint('⚠️ $modelName attempt $attempt failed (503), retrying in ${delaySeconds}s...');
+            await Future.delayed(Duration(seconds: delaySeconds));
+            continue;
+          }
+          // Not a 503 error or last attempt — log and try next model
+          debugPrint('❌ $modelName failed after $attempt attempts: $e');
+          break; // break inner loop to try next model
+        }
+      }
     }
+
+    // All models failed — return a helpful error with what we know about the doc
+    debugPrint('❌ All scan models failed');
+    return GeminiResponse(
+      message: '⚠️ The AI service is currently busy. Your document was received but could not be analyzed right now. Please try again in a moment.',
+      documentAnalysis: DocumentAnalysis(
+        type: 'document',
+        summary: 'Document received but analysis unavailable due to high server demand. Please try again shortly.',
+        items: [],
+        keyNotes: [
+          'AI service temporarily overloaded — this is not a problem with your image',
+          'Please tap Scan again in 30-60 seconds',
+        ],
+        patientAdvice: 'Your image looks fine. Please try scanning again shortly.',
+      ),
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════════════

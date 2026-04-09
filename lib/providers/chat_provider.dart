@@ -64,6 +64,8 @@ class MedStatusResult {
   final List<Medication> upcoming;
   final Medication? nextMedication;
   final String? nextMedicationTime;
+  final int takenSlots;
+  final int totalSlots;
 
   const MedStatusResult({
     required this.all,
@@ -72,16 +74,18 @@ class MedStatusResult {
     required this.upcoming,
     this.nextMedication,
     this.nextMedicationTime,
+    required this.takenSlots,
+    required this.totalSlots,
   });
 
-  /// True only when every active medication has been taken today and none missed
+  /// True only when every scheduled dose has been taken today and none missed
   bool get allTaken =>
-      all.isNotEmpty &&
+      totalSlots > 0 &&
           missed.isEmpty &&
-          taken.length == all.length;
+          takenSlots == totalSlots;
   bool get noMeds => all.isEmpty;
   double get adherenceRate =>
-      all.isEmpty ? 1.0 : taken.length / all.length;
+      totalSlots == 0 ? 1.0 : takenSlots / totalSlots;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -519,15 +523,16 @@ class ChatProvider extends ChangeNotifier {
               med.dosage,
               time,
             );
-          }
 
-          if (_patient != null) {
-            await InboxService.sendReminder(
-              userId: _patient!.id,
-              medicationName: med.name,
-              dosage: med.dosage,
-              medicationId: med.id,
-            );
+            if (_patient != null) {
+              await InboxService.sendReminder(
+                userId: _patient!.id,
+                medicationName: med.name,
+                dosage: med.dosage,
+                scheduledTime: time,
+                medicationId: med.id,
+              );
+            }
           }
         }
       }
@@ -633,7 +638,7 @@ class ChatProvider extends ChangeNotifier {
         bool medHasUpcoming = false;
         String? firstUpcomingTime;
 
-        for (final timeStr in med.reminderTimes) {
+          for (final timeStr in med.reminderTimes) {
           final parts = timeStr.split(':');
           if (parts.length < 2) continue;
           final hour = int.tryParse(parts[0]) ?? 0;
@@ -643,10 +648,12 @@ class ChatProvider extends ChangeNotifier {
           DateTime(now.year, now.month, now.day, hour, minute);
           final slotTaken = med.isTakenForSlot(timeStr);
 
+          if (slotTaken) {
+            medHasTaken = true;
+          }
+
           if (now.isAfter(scheduledTime)) {
-            if (slotTaken) {
-              medHasTaken = true;
-            } else {
+            if (!slotTaken) {
               medHasMissed = true;
             }
           } else {
@@ -655,14 +662,13 @@ class ChatProvider extends ChangeNotifier {
           }
         }
 
+        if (medHasTaken) {
+          if (!taken.contains(med)) taken.add(med);
+        }
         if (medHasMissed) {
           if (!missed.contains(med)) missed.add(med);
-        } else if (medHasTaken && !medHasUpcoming) {
-          if (!taken.contains(med)) taken.add(med);
-        } else if (medHasTaken && medHasUpcoming) {
-          if (!taken.contains(med)) taken.add(med);
-          if (!upcoming.contains(med)) upcoming.add(med);
-        } else if (medHasUpcoming && !medHasTaken && !medHasMissed) {
+        }
+        if (medHasUpcoming) {
           if (!upcoming.contains(med)) upcoming.add(med);
           if (firstUpcomingTime != null && nextMed == null) {
             nextMed = med;
@@ -678,6 +684,8 @@ class ChatProvider extends ChangeNotifier {
         upcoming: upcoming,
         nextMedication: nextMed,
         nextMedicationTime: nextMedTime,
+        takenSlots: meds.fold(0, (sum, med) => sum + med.takenSlotsToday),
+        totalSlots: meds.fold(0, (sum, med) => sum + med.totalSlotsToday),
       );
     } catch (e) {
       debugPrint('❌ Med status check: $e');
