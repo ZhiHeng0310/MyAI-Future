@@ -336,7 +336,8 @@ BE PROFESSIONAL AND CONCISE. Return ONLY the JSON object.''';
 
   // Models tried in order. Only use the configured model with more retries.
   static final List<String> _scanModels = [
-    AppConfig.geminiModel
+    AppConfig.geminiModel,
+    "models/gemini-2.5-flash-lite",
   ];
 
   Future<GeminiResponse> sendMessageWithImage(
