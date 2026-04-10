@@ -96,6 +96,7 @@ class _AlertsList extends StatelessWidget {
           itemBuilder: (_, i) => _AlertCard(
             alert: alerts[i],
             doctorName: doctorName,
+            doctorId: doctorId,
             db: db,
           ),
         );
@@ -109,11 +110,13 @@ class _AlertsList extends StatelessWidget {
 class _AlertCard extends StatelessWidget {
   final HealthAlert alert;
   final String doctorName;
+  final String doctorId;
   final FirestoreService db;
 
   const _AlertCard({
     required this.alert,
     required this.doctorName,
+    required this.doctorId,
     required this.db,
   });
 
@@ -309,6 +312,7 @@ class _AlertCard extends StatelessWidget {
     await InboxService.sendDoctorMessage(
       userId: a.patientId,
       doctorName: doctorName,
+      doctorId: doctorId,
       message: doctorResponse,
     );
 

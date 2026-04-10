@@ -2,6 +2,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../models/notification_model.dart';
+import 'firestore_service.dart';
 import 'notification_service.dart';
 
 class InboxService extends ChangeNotifier {
@@ -292,6 +293,7 @@ class InboxService extends ChangeNotifier {
     required String userId,
     required String doctorName,
     required String message,
+    String? doctorId,
     Map<String, dynamic>? metadata,
   }) async {
     final notification = NotificationModel(
@@ -306,7 +308,21 @@ class InboxService extends ChangeNotifier {
         ...?metadata,
       },
     );
+
     await _saveAndNotify(notification);
+
+    if (doctorId != null) {
+      try {
+        await FirestoreService().createPatientInboxMessage(
+          patientId: userId,
+          message: '📩 Message from Dr. $doctorName: $message',
+          type: 'doctor_message',
+          doctorId: doctorId,
+        );
+      } catch (e) {
+        debugPrint('⚠️ Failed to mirror doctor message to patient inbox: $e');
+      }
+    }
 
     await NotificationService.showHealthAlert(
       '👨‍⚕️ Dr. $doctorName: $message',

@@ -634,23 +634,20 @@ class ChatProvider extends ChangeNotifier {
         }
 
         bool medHasMissed = false;
-        bool medHasTaken = false;
         bool medHasUpcoming = false;
+        final slotStatus = <bool>[];
         String? firstUpcomingTime;
 
-          for (final timeStr in med.reminderTimes) {
+        for (final timeStr in med.reminderTimes) {
           final parts = timeStr.split(':');
           if (parts.length < 2) continue;
           final hour = int.tryParse(parts[0]) ?? 0;
           final minute = int.tryParse(parts[1]) ?? 0;
 
           final scheduledTime =
-          DateTime(now.year, now.month, now.day, hour, minute);
+              DateTime(now.year, now.month, now.day, hour, minute);
           final slotTaken = med.isTakenForSlot(timeStr);
-
-          if (slotTaken) {
-            medHasTaken = true;
-          }
+          slotStatus.add(slotTaken);
 
           if (now.isAfter(scheduledTime)) {
             if (!slotTaken) {
@@ -662,7 +659,8 @@ class ChatProvider extends ChangeNotifier {
           }
         }
 
-        if (medHasTaken) {
+        final medFullyTaken = slotStatus.isNotEmpty && slotStatus.every((t) => t);
+        if (medFullyTaken) {
           if (!taken.contains(med)) taken.add(med);
         }
         if (medHasMissed) {

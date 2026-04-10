@@ -428,6 +428,7 @@ class DoctorChatProvider extends ChangeNotifier {
       await InboxService.sendDoctorMessage(
         userId: patient.id,
         doctorName: _doctor!.name,
+        doctorId: _doctor!.id,
         message: 'How are you feeling today?',
         metadata: {'action': 'doctor_check', 'doctorId': _doctor!.id},
       );
@@ -545,6 +546,7 @@ class DoctorChatProvider extends ChangeNotifier {
       await InboxService.sendDoctorMessage(
         userId: target.id,
         doctorName: _doctor!.name,
+        doctorId: _doctor!.id,
         message: message,
       );
 

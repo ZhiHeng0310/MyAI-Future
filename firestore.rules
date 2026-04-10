@@ -2,7 +2,10 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions for common auth checks
+    // ══════════════════════════════════════════════════════════════════════════
+    // HELPER FUNCTIONS
+    // ══════════════════════════════════════════════════════════════════════════
+
     function isSignedIn() {
       return request.auth != null;
     }
@@ -27,7 +30,9 @@ service cloud.firestore {
       return request.auth != null && (request.auth.token.role == 'staff' || request.auth.token.role == 'doctor');
     }
 
-    // ── PATIENTS: owner and doctors can read; owner can write ────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // PATIENTS COLLECTION
+    // ══════════════════════════════════════════════════════════════════════════
     match /patients/{userId} {
       allow read: if isPatient(userId) || isDoctorRole() || isDoctorUser();
       allow create: if isSignedIn() && request.resource.data.id == request.auth.uid;
@@ -39,7 +44,9 @@ service cloud.firestore {
       allow delete: if isPatient(userId);
     }
 
-    // ── NESTED PATIENT MEDICATIONS: read from AI and doctor contexts ─────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // NESTED PATIENT MEDICATIONS
+    // ══════════════════════════════════════════════════════════════════════════
     match /patients/{patientId}/medications/{medId} {
       allow read: if isSignedIn() && (
         isPatient(patientId) || isDoctorRole() || isDoctorUser()
@@ -56,7 +63,9 @@ service cloud.firestore {
       allow delete: if isDoctorRole() || isDoctorUser();
     }
 
-    // ── DOCTORS: read by authenticated users; doctor can modify own record ────
+    // ══════════════════════════════════════════════════════════════════════════
+    // DOCTORS COLLECTION
+    // ══════════════════════════════════════════════════════════════════════════
     match /doctors/{docId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.id == request.auth.uid;
@@ -64,7 +73,9 @@ service cloud.firestore {
       allow delete: if isDoctor(docId);
     }
 
-    // ── MEDICATIONS: patient reads own; doctor reads/writes prescribed ────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // MEDICATIONS COLLECTION
+    // ══════════════════════════════════════════════════════════════════════════
     match /medications/{medId} {
       allow read: if isSignedIn() && (
         resource.data.patientId == request.auth.uid ||
@@ -83,20 +94,41 @@ service cloud.firestore {
       );
       allow update: if isDoctorRole() || isDoctorUser() || (
         isPatient(resource.data.patientId) &&
-        request.resource.data.diff(resource.data).affectedKeys().size() == 1 &&
-        'takenSlots' in request.resource.data.diff(resource.data).affectedKeys()
+        request.resource.data.diff(resource.data).affectedKeys().size() <= 2 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasAny(['takenSlots', 'lastTaken'])
       );
       allow delete: if isDoctorRole() || isDoctorUser();
     }
 
-    // ── DOSE LOGS: patient creates; patient/doctor read ─────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // DOSE LOGS COLLECTION
+    // ══════════════════════════════════════════════════════════════════════════
     match /dose_logs/{logId} {
-      allow create: if isSignedIn();
-      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.patientId == request.auth.uid;
+      allow read: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
       allow update, delete: if false;
     }
 
-    // ── CHECK-INS: patient creates; both can read ──────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // MEDICATION LOGS COLLECTION (if used separately from dose_logs)
+    // ══════════════════════════════════════════════════════════════════════════
+    match /medication_logs/{logId} {
+      allow create: if isSignedIn() && request.resource.data.patientId == request.auth.uid;
+      allow read: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
+      allow update, delete: if false;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // CHECK-INS COLLECTION
+    // ══════════════════════════════════════════════════════════════════════════
     match /checkins/{checkInId} {
       allow create: if isSignedIn() && request.resource.data.patientId == request.auth.uid;
       allow read: if isSignedIn() && (
@@ -107,7 +139,9 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // ── HEALTH ALERTS: patient creates (triggers AI); doctor reads/updates ────
+    // ══════════════════════════════════════════════════════════════════════════
+    // HEALTH ALERTS COLLECTION
+    // ══════════════════════════════════════════════════════════════════════════
     match /health_alerts/{alertId} {
       allow create: if isSignedIn() && request.resource.data.patientId == request.auth.uid;
       allow read: if isSignedIn() && (
@@ -117,12 +151,14 @@ service cloud.firestore {
         isDoctorUser()
       );
       allow update: if isSignedIn() && (
-        isDoctorRole() || isDoctorUser() || request.auth.token.role == 'staff'
+        isDoctorRole() || isDoctorUser() || isStaff()
       );
       allow delete: if isDoctorRole() || isDoctorUser();
     }
 
-    // ── URGENT MESSAGES: AI can write urgent patient-doctor alerts ──────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // URGENT MESSAGES COLLECTION
+    // ══════════════════════════════════════════════════════════════════════════
     match /urgent_messages/{messageId} {
       allow create: if isSignedIn();
       allow read: if isSignedIn() && (
@@ -134,7 +170,9 @@ service cloud.firestore {
       allow update, delete: if isStaff() || isDoctorUser();
     }
 
-    // ── DOCTOR INBOX: doctor reads/updates own; system can create ────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // DOCTOR INBOX (nested messages)
+    // ══════════════════════════════════════════════════════════════════════════
     match /doctor_inbox/{doctorId}/messages/{messageId} {
       allow read: if isDoctor(doctorId) || isDoctorUser();
       allow create: if isSignedIn() && request.resource.data.doctorId == doctorId;
@@ -143,8 +181,9 @@ service cloud.firestore {
       allow delete: if isDoctor(doctorId) || isDoctorUser();
     }
 
-
-    // ── PATIENT INBOX: patient reads own; system and doctors can create ─────
+    // ══════════════════════════════════════════════════════════════════════════
+    // PATIENT INBOX (nested messages)
+    // ══════════════════════════════════════════════════════════════════════════
     match /patient_inbox/{patientId}/messages/{messageId} {
       allow read: if isPatient(patientId);
       allow create: if isSignedIn() && (
@@ -157,9 +196,11 @@ service cloud.firestore {
       allow delete: if isPatient(patientId) || isDoctorUser() || isDoctorRole();
     }
 
-    // ── APPOINTMENTS: patients can book and cancel their own slots ──────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // APPOINTMENTS (nested slots under doctor)
+    // ══════════════════════════════════════════════════════════════════════════
     match /appointments/{doctorId}/slots/{slotId} {
-      allow read: if isSignedIn();  // allow all authenticated users to read for availability
+      allow read: if isSignedIn();
       allow create: if isSignedIn() &&
         request.resource.data.doctorId == doctorId &&
         request.resource.data.patientId == request.auth.uid;
@@ -175,12 +216,16 @@ service cloud.firestore {
       );
     }
 
-    // ── COLLECTION GROUP: allow patients to query their appointments across all doctors ──
+    // ══════════════════════════════════════════════════════════════════════════
+    // COLLECTION GROUP: Allow patients to query their appointments across all doctors
+    // ══════════════════════════════════════════════════════════════════════════
     match /{path=**}/slots/{slotId} {
       allow read: if isSignedIn() && resource.data.patientId == request.auth.uid;
     }
 
-    // ── QUEUES: patients join; staff manages ───────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // QUEUES (nested entries under clinic)
+    // ══════════════════════════════════════════════════════════════════════════
     match /queues/{clinicId}/entries/{entryId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.patientId == request.auth.uid;
@@ -197,14 +242,18 @@ service cloud.firestore {
       );
     }
 
-    // ── PUSH NOTIFICATIONS: system writes (for Cloud Functions) ───────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // PUSH NOTIFICATIONS (system-level, for Cloud Functions)
+    // ══════════════════════════════════════════════════════════════════════════
     match /push_notifications/{notifId} {
       allow read: if false;
       allow create: if isSignedIn();
       allow update, delete: if false;
     }
 
-    // ── NOTIFICATIONS: top-level app inbox entries ───────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // NOTIFICATIONS (top-level app inbox entries)
+    // ══════════════════════════════════════════════════════════════════════════
     match /notifications/{notificationId} {
       allow create: if isSignedIn() && request.resource.data.userId is string;
       allow read: if isSignedIn() && (
@@ -223,7 +272,9 @@ service cloud.firestore {
       );
     }
 
-    // ── LEGACY ALERTS: keep for backward compatibility ──────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // LEGACY ALERTS (backward compatibility)
+    // ══════════════════════════════════════════════════════════════════════════
     match /alerts/{alertId} {
       allow create: if isSignedIn();
       allow read: if isSignedIn();
@@ -231,7 +282,9 @@ service cloud.firestore {
       allow delete: if isStaff();
     }
 
-    // ── DENY ALL OTHER ACCESS ──────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // DENY ALL OTHER ACCESS
+    // ══════════════════════════════════════════════════════════════════════════
     match /{document=**} {
       allow read, write: if false;
     }
