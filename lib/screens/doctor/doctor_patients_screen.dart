@@ -5,6 +5,7 @@ import '../../models/patient_model.dart';
 import '../../models/medication_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firestore_service.dart';
+import '../../widgets/cl_button.dart' as clButton;
 import 'doctor_add_medication_screen.dart';
 
 class DoctorPatientsScreen extends StatefulWidget {
@@ -31,9 +32,23 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
 
     return Column(
       children: [
-        // ── Search bar ──
+        // ── Prescribe button ──
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: clButton.ClButton(
+            label:     'Prescribe Medication to Patient',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => _PatientSearchScreen(db: _db, doctorId: doctorId),
+              ),
+            ),
+            icon:     Icons.add_rounded,
+          ),
+        ),
+
+        // ── Search bar ──
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: TextField(
             controller: _searchCtrl,
             onChanged:  (v) => setState(() => _query = v.toLowerCase()),
@@ -451,6 +466,138 @@ class _MedRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8)),
             ),
             child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Patient Search Screen ───────────────────────────────────────────────────
+
+class _PatientSearchScreen extends StatefulWidget {
+  final FirestoreService db;
+  final String? doctorId;
+  const _PatientSearchScreen({required this.db, required this.doctorId});
+
+  @override
+  State<_PatientSearchScreen> createState() => _PatientSearchScreenState();
+}
+
+class _PatientSearchScreenState extends State<_PatientSearchScreen> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Search Patients'),
+        backgroundColor: const Color(0xFF6C63FF),
+        foregroundColor: Colors.white,
+      ),
+      body: Column(
+        children: [
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: _searchCtrl,
+              onChanged: (v) => setState(() => _query = v.toLowerCase()),
+              decoration: InputDecoration(
+                hintText: 'Search patient by name or email…',
+                prefixIcon: const Icon(Icons.search_rounded,
+                    color: Color(0xFF667085)),
+                suffixIcon: _query.isNotEmpty
+                    ? IconButton(
+                  icon: const Icon(Icons.clear_rounded),
+                  onPressed: () {
+                    _searchCtrl.clear();
+                    setState(() => _query = '');
+                  },
+                )
+                    : null,
+              ),
+            ),
+          ),
+
+          // Patient list
+          Expanded(
+            child: StreamBuilder<List<PatientModel>>(
+              stream: widget.db.allPatientsStream(),
+              builder: (ctx, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                      child: CircularProgressIndicator(
+                          color: Color(0xFF6C63FF)));
+                }
+
+                final all = snap.data ?? [];
+                final filtered = _query.isEmpty
+                    ? all
+                    : all.where((p) =>
+                p.name.toLowerCase().contains(_query) ||
+                    p.email.toLowerCase().contains(_query))
+                    .toList();
+
+                if (filtered.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.people_outline_rounded,
+                            color: Color(0xFF667085), size: 48),
+                        const SizedBox(height: 12),
+                        Text(
+                          _query.isEmpty
+                              ? 'No patients registered.'
+                              : 'No patients match "$_query".',
+                          style: GoogleFonts.dmSans(
+                              color: const Color(0xFF667085)),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                  itemCount: filtered.length,
+                  itemBuilder: (_, i) => ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: const Color(0xFF00C896).withOpacity(0.15),
+                      child: Text(
+                        filtered[i].name.isNotEmpty
+                            ? filtered[i].name[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                            color: Color(0xFF00C896),
+                            fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    title: Text(filtered[i].name,
+                        style: GoogleFonts.dmSans(fontWeight: FontWeight.w600)),
+                    subtitle: Text(filtered[i].email,
+                        style: GoogleFonts.dmSans(
+                            fontSize: 12, color: const Color(0xFF667085))),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                        color: Color(0xFF667085)),
+                    onTap: () => Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (_) => DoctorAddMedicationScreen(
+                            patient: filtered[i]),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),

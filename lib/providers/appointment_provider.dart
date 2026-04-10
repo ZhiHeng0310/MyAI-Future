@@ -70,7 +70,36 @@ class AppointmentProvider extends ChangeNotifier {
 
         debugPrint('✅ Sent inbox notification for appointment');
 
-        // 3. Push notification (works when app is closed/background)
+        // 3. Notify the doctor that the patient booked the request
+        await InboxService.sendAppointmentUpdateNotification(
+          userId: doctor.id,
+          title: '✅ Appointment booked by ${patient.name}',
+          message: '${patient.name} confirmed the appointment request for '
+              '${appt.dateLabel} at ${appt.timeSlot}.',
+        );
+
+        debugPrint('✅ Sent doctor notification for booked appointment');
+
+        // 4. Notify the doctor via push as well when the patient confirms
+        await NotificationService.sendPushToUser(
+          userId:         doctor.id,
+          userCollection: 'doctors',
+          title:          '✅ Appointment Confirmed',
+          body:           '${patient.name} confirmed the appointment request for ${appt.dateLabel} at ${appt.timeSlot}.',
+          channel:        'careloop_queue',
+        );
+
+        debugPrint('✅ Sent push notification to doctor for booked appointment');
+
+        // 5. Send a medication review prompt to the patient
+        await InboxService.sendMedicationReviewNotification(
+          userId: patient.id,
+          doctorName: doctor.name,
+        );
+
+        debugPrint('✅ Sent medication review notification');
+
+        // 5. Push notification (works when app is closed/background)
         await NotificationService.sendPushToUser(
           userId:         patient.id,
           userCollection: 'patients',

@@ -31,7 +31,11 @@ service cloud.firestore {
     match /patients/{userId} {
       allow read: if isPatient(userId) || isDoctorRole() || isDoctorUser();
       allow create: if isSignedIn() && request.resource.data.id == request.auth.uid;
-      allow update: if isPatient(userId);
+      allow update: if isPatient(userId) || (
+        (isDoctorRole() || isDoctorUser()) &&
+        request.resource.data.assignedDoctorId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assignedDoctorId'])
+      );
       allow delete: if isPatient(userId);
     }
 
@@ -40,7 +44,14 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
         isPatient(patientId) || isDoctorRole() || isDoctorUser()
       );
-      allow create: if isDoctorRole() || isDoctorUser();
+      allow create: if isSignedIn() && (
+        request.resource.data.doctorId == request.auth.uid &&
+        request.resource.data.patientId == patientId &&
+        request.resource.data.patientId != request.auth.uid &&
+        request.resource.data.name is string &&
+        request.resource.data.dosage is string &&
+        request.resource.data.frequency is string
+      );
       allow update: if isDoctorRole() || isDoctorUser();
       allow delete: if isDoctorRole() || isDoctorUser();
     }
@@ -61,7 +72,15 @@ service cloud.firestore {
         isDoctorRole() ||
         isDoctorUser()
       );
-      allow create: if isDoctorRole() || isDoctorUser();
+      allow create: if isSignedIn() && (
+        request.resource.data.doctorId == request.auth.uid &&
+        request.resource.data.patientId is string &&
+        request.resource.data.name is string &&
+        request.resource.data.dosage is string &&
+        request.resource.data.frequency is string &&
+        request.resource.data.reminderTimes is list &&
+        request.resource.data.active is bool
+      );
       allow update: if isDoctorRole() || isDoctorUser() || (
         isPatient(resource.data.patientId) &&
         request.resource.data.diff(resource.data).affectedKeys().size() == 1 &&
@@ -82,7 +101,8 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.resource.data.patientId == request.auth.uid;
       allow read: if isSignedIn() && (
         resource.data.patientId == request.auth.uid ||
-        isDoctorRole()
+        isDoctorRole() ||
+        isDoctorUser()
       );
       allow update, delete: if false;
     }
@@ -108,27 +128,33 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
         resource.data.patientId == request.auth.uid ||
         resource.data.doctorId == request.auth.uid ||
-        isStaff()
+        isStaff() ||
+        isDoctorUser()
       );
-      allow update, delete: if isStaff();
+      allow update, delete: if isStaff() || isDoctorUser();
     }
 
     // ── DOCTOR INBOX: doctor reads/updates own; system can create ────────────
     match /doctor_inbox/{doctorId}/messages/{messageId} {
-      allow read: if isDoctor(doctorId);
+      allow read: if isDoctor(doctorId) || isDoctorUser();
       allow create: if isSignedIn() && request.resource.data.doctorId == doctorId;
-      allow update: if isDoctor(doctorId);
-      allow list: if isDoctor(doctorId);
-      allow delete: if isDoctor(doctorId);
+      allow update: if isDoctor(doctorId) || isDoctorUser();
+      allow list: if isDoctor(doctorId) || isDoctorUser();
+      allow delete: if isDoctor(doctorId) || isDoctorUser();
     }
 
-    // ── PATIENT INBOX: patient reads own; system can create ──────────────────
+
+    // ── PATIENT INBOX: patient reads own; system and doctors can create ─────
     match /patient_inbox/{patientId}/messages/{messageId} {
       allow read: if isPatient(patientId);
-      allow create: if isSignedIn() && request.resource.data.patientId == patientId;
-      allow update: if isPatient(patientId);
+      allow create: if isSignedIn() && (
+        request.resource.data.patientId == patientId ||
+        isDoctorUser() ||
+        isDoctorRole()
+      );
+      allow update: if isPatient(patientId) || isDoctorUser() || isDoctorRole();
       allow list: if isPatient(patientId);
-      allow delete: if isPatient(patientId);
+      allow delete: if isPatient(patientId) || isDoctorUser() || isDoctorRole();
     }
 
     // ── APPOINTMENTS: patients can book and cancel their own slots ──────────
@@ -139,11 +165,13 @@ service cloud.firestore {
         request.resource.data.patientId == request.auth.uid;
       allow update: if isSignedIn() && (
         resource.data.patientId == request.auth.uid ||
-        isDoctor(doctorId)
+        isDoctor(doctorId) ||
+        isDoctorUser()
       );
       allow delete: if isSignedIn() && (
         resource.data.patientId == request.auth.uid ||
-        isDoctor(doctorId)
+        isDoctor(doctorId) ||
+        isDoctorUser()
       );
     }
 
@@ -179,14 +207,19 @@ service cloud.firestore {
     // ── NOTIFICATIONS: top-level app inbox entries ───────────────────────────
     match /notifications/{notificationId} {
       allow create: if isSignedIn() && request.resource.data.userId is string;
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isDoctorUser()
+      );
       allow update: if isSignedIn() && (
         resource.data.userId == request.auth.uid ||
-        isStaff()
+        isStaff() ||
+        isDoctorUser()
       );
       allow delete: if isSignedIn() && (
         resource.data.userId == request.auth.uid ||
-        isStaff()
+        isStaff() ||
+        isDoctorUser()
       );
     }
 

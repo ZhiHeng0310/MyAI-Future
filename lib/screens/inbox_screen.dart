@@ -2,6 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/notification_model.dart';
+import '../providers/auth_provider.dart';
+import '../screens/appointment/appointment_booking_screen.dart';
+import '../services/firestore_service.dart';
+import '../services/notification_service.dart';
 import 'home/home_screen.dart';
 import '../services/inbox_service.dart';
 
@@ -197,85 +201,108 @@ class _NotificationTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Icon with unread indicator
-                Stack(
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: accentColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Text(
-                          notification.icon,
-                          style: const TextStyle(fontSize: 24),
-                        ),
-                      ),
-                    ),
-                    if (!notification.isRead)
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        child: Container(
-                          width: 12,
-                          height: 12,
+                    // Icon with unread indicator
+                    Stack(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
                           decoration: BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
+                            color: accentColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Text(
+                              notification.icon,
+                              style: const TextStyle(fontSize: 24),
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-                const SizedBox(width: 12),
-
-                // Content
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              notification.title,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: notification.isRead
-                                    ? FontWeight.w500
-                                    : FontWeight.bold,
-                                color: Colors.black87,
+                        if (!notification.isRead)
+                          Positioned(
+                            top: 0,
+                            right: 0,
+                            child: Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
                               ),
                             ),
                           ),
+                      ],
+                    ),
+                    const SizedBox(width: 12),
+
+                    // Content
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  notification.title,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: notification.isRead
+                                        ? FontWeight.w500
+                                        : FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                notification.relativeTime,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
                           Text(
-                            notification.relativeTime,
+                            notification.message,
                             style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
+                              fontSize: 14,
+                              color: Colors.grey.shade700,
+                              height: 1.4,
                             ),
                           ),
+                          if (_isAppointmentRequest()) ...[
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: () => _rejectAppointmentRequest(context),
+                                    child: const Text('Reject'),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: ElevatedButton(
+                                    onPressed: () => _acceptAppointmentRequest(context),
+                                    child: const Text('Accept & Book'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        notification.message,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade700,
-                          height: 1.4,
-                        ),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -285,8 +312,84 @@ class _NotificationTile extends StatelessWidget {
     );
   }
 
+  bool _isAppointmentRequest() {
+    return notification.type == NotificationType.appointment &&
+        notification.metadata?['action'] == 'open_appointments' &&
+         notification.metadata?['doctorId'] != null &&
+        notification.metadata?['requestMessage'] != null;
+  }
+
+  Future<void> _acceptAppointmentRequest(BuildContext context) async {
+    final doctorId = notification.metadata?['doctorId'] as String?;
+    final doctorName = notification.metadata?['doctorName'] as String?;
+    final requestMessage = notification.metadata?['requestMessage'] as String?;
+    final patient = Provider.of<AuthProvider>(context, listen: false).patient;
+
+    if (doctorId == null || patient == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open booking at this time.')),
+      );
+      return;
+    }
+
+    final doctor = await FirestoreService().getDoctor(doctorId);
+    if (doctor == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Doctor information could not be loaded.')),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => AppointmentBookingScreen(
+        doctor: doctor,
+        patient: patient,
+        initialSymptoms: requestMessage != null && requestMessage.isNotEmpty
+            ? [requestMessage]
+            : [],
+      ),
+    ));
+  }
+
+  Future<void> _rejectAppointmentRequest(BuildContext context) async {
+    final doctorId = notification.metadata?['doctorId'] as String?;
+    final doctorName = notification.metadata?['doctorName'] as String?;
+    final patient = Provider.of<AuthProvider>(context, listen: false).patient;
+
+    if (doctorId == null || patient == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to send rejection.')),
+      );
+      return;
+    }
+
+    await InboxService.sendAppointmentUpdateNotification(
+      userId: doctorId,
+      title: '❌ Appointment Request Declined',
+      message:
+          '${patient.name} declined the appointment request from Dr. ${doctorName ?? 'your doctor'}.',
+    );
+
+    await NotificationService.sendPushToUser(
+      userId:         doctorId,
+      userCollection: 'doctors',
+      title:          '❌ Appointment Request Declined',
+      body:           '${patient.name} declined your appointment request.',
+      channel:        'careloop_queue',
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Your rejection was sent to the doctor.')),
+    );
+  }
+
   void _handleNotificationTap(BuildContext context) {
     // Handle navigation based on notification type
+    if (_isAppointmentRequest()) {
+      _showAppointmentRequestDialog(context);
+      return;
+    }
+
     switch (notification.type) {
       case NotificationType.appointment:
       // Navigate to appointments
@@ -296,12 +399,24 @@ class _NotificationTile extends StatelessWidget {
             '/appointment-details',
             arguments: notification.metadata!['appointmentId'],
           );
+          return;
+        }
+        if (notification.metadata?['action'] == 'open_appointments') {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 4)),
+          );
         }
         break;
       case NotificationType.medication:
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 3)),
-        );
+        if (notification.metadata?['action'] == 'open_medications') {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 3)),
+          );
+        } else {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 3)),
+          );
+        }
         break;
       case NotificationType.queue:
         if (notification.metadata?['action'] == 'open_appointments') {
@@ -329,5 +444,31 @@ class _NotificationTile extends StatelessWidget {
       // No specific action
         break;
     }
+  }
+
+  void _showAppointmentRequestDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Appointment Request'),
+        content: Text(notification.message),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _rejectAppointmentRequest(context);
+            },
+            child: const Text('Reject'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _acceptAppointmentRequest(context);
+            },
+            child: const Text('Accept'),
+          ),
+        ],
+      ),
+    );
   }
 }

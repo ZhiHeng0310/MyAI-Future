@@ -18,6 +18,7 @@ class DoctorChatMessage {
   final String text;
   final bool isDoctor;
   final String? action;
+  final List<PatientModel>? patientOptions;
   final bool hasImage;
   final DateTime timestamp;
 
@@ -25,6 +26,7 @@ class DoctorChatMessage {
     required this.text,
     required this.isDoctor,
     this.action,
+    this.patientOptions,
     this.hasImage = false,
     DateTime? timestamp,
   }) : timestamp = timestamp ?? DateTime.now();
@@ -229,12 +231,29 @@ class DoctorChatProvider extends ChangeNotifier {
     }
 
     // SPEC FEATURE 3: Send Appointment Request (with calendar button)
-    if (response.actions.contains('send_appointment_request') &&
-        response.sendToPatient != null) {
-      await _handleSendAppointmentRequest(
-          response.patientId, response.sendToPatient!);
-      displayMsg =
-      '$displayMsg\n\n✅ Appointment request sent with calendar button.';
+    if (response.actions.contains('send_appointment_request') ||
+        response.actions.contains('book_appointment')) {
+      if (response.patientId != null && response.sendToPatient != null) {
+        await _handleSendAppointmentRequest(
+            response.patientId, response.sendToPatient!);
+        displayMsg =
+        '$displayMsg\n\n✅ Appointment request sent with calendar button.';
+      } else {
+        if (_myPatients.isEmpty) {
+          displayMsg = 'I could not identify a patient who has prescriptions yet. '
+              'Please prescribe medication to a patient before requesting an appointment.';
+        } else {
+          _messages.add(DoctorChatMessage(
+            text: 'Select a patient from your prescription list to request an appointment:',
+            isDoctor: false,
+            action: 'choose_appointment_patient',
+            patientOptions: List<PatientModel>.from(_myPatients),
+          ));
+          _thinking = false;
+          notifyListeners();
+          return;
+        }
+      }
     }
 
     // Send patient message
@@ -457,6 +476,7 @@ class DoctorChatProvider extends ChangeNotifier {
 
       await InboxService.sendAppointmentRequestNotification(
         userId: target.id,
+        doctorId: _doctor!.id,
         doctorName: _doctor!.name,
         message: message,
       );
@@ -474,6 +494,28 @@ class DoctorChatProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ Error sending appointment request: $e');
     }
+  }
+
+  Future<void> sendAppointmentRequestToPatient(PatientModel patient) async {
+    if (_doctor == null) return;
+
+    _messages.add(DoctorChatMessage(
+      text: '📩 Requesting appointment for ${patient.name}...',
+      isDoctor: true,
+    ));
+    notifyListeners();
+
+    await _handleSendAppointmentRequest(
+      patient.id,
+      'Please choose a suitable appointment time with Dr. ${_doctor!.name}.',
+    );
+
+    _messages.add(DoctorChatMessage(
+      text: '✅ Appointment request sent to ${patient.name}.',
+      isDoctor: false,
+      action: 'send_appointment_request',
+    ));
+    notifyListeners();
   }
 
   // ══════════════════════════════════════════════════════════════════════════

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../models/patient_model.dart';
@@ -97,8 +98,13 @@ class _DoctorAddMedicationScreenState
         active:        true,
       );
 
-      // ✅ FIXED: pass doctorId from AuthProvider so patient gets assignedDoctorId set
-      final doctorId = context.read<AuthProvider>().doctor?.id;
+      // ✅ Use the current doctor UID as fallback when assigning medication.
+      final doctorId = context.read<AuthProvider>().doctor?.id
+          ?? fb_auth.FirebaseAuth.instance.currentUser?.uid;
+      if (doctorId == null || doctorId.isEmpty) {
+        throw Exception('Unable to determine doctor identity.');
+      }
+
       await _db.addMedication(med, doctorId: doctorId);
 
       if (mounted) {
@@ -178,7 +184,7 @@ class _DoctorAddMedicationScreenState
 
             const SizedBox(height: 24),
 
-            clButton.ClTextField(
+            ClTextField(
               controller: _nameCtrl,
               label:      'Medicine Name',
               hint:       'e.g. Paracetamol, Amoxicillin',
@@ -187,7 +193,7 @@ class _DoctorAddMedicationScreenState
 
             const SizedBox(height: 16),
 
-            clButton.ClTextField(
+            ClTextField(
               controller: _dosageCtrl,
               label:      'Dosage',
               hint:       'e.g. 500mg, 1 tablet',
@@ -253,7 +259,7 @@ class _DoctorAddMedicationScreenState
 
             const SizedBox(height: 16),
 
-            clButton.ClTextField(
+            ClTextField(
               controller: _notesCtrl,
               label:      'Notes for patient (optional)',
               hint:       'e.g. Take after meals',
@@ -322,7 +328,7 @@ class _TimePickerFieldState extends State<_TimePickerField> {
     return GestureDetector(
       onTap: _pick,
       child: AbsorbPointer(
-        child: clButton.ClTextField(
+        child: ClTextField(
           controller: widget.controller,
           label:      widget.label,
           hint:       '08:00',

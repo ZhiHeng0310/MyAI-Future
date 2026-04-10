@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../models/patient_model.dart';
 import '../../providers/doctor_chat_provider.dart';
 import '../../providers/auth_provider.dart';
 
@@ -335,6 +336,11 @@ class _MessageBubble extends StatelessWidget {
                   const SizedBox(height: 6),
                   _ActionBadge(action: msg.action!),
                 ],
+                if (!isDoc && msg.action == 'choose_appointment_patient' &&
+                    msg.patientOptions != null) ...[
+                  const SizedBox(height: 8),
+                  _PatientSelectionList(patientOptions: msg.patientOptions!),
+                ],
               ],
             ),
           ),
@@ -352,6 +358,8 @@ class _ActionBadge extends StatelessWidget {
     switch (action) {
       case 'check_patient_status':     return '🔍 Patient status checked';
       case 'send_appointment_request': return '📅 Appointment request sent';
+      case 'book_appointment':         return '📅 Appointment request';
+      case 'choose_appointment_patient': return '👥 Select a patient';
       case 'send_patient_message':     return '💬 Message sent to patient';
       case 'acknowledge_alert':        return '✅ Alert acknowledged';
       default:                         return action;
@@ -430,6 +438,38 @@ class _TypingIndicator extends StatelessWidget {
 }
 
 // ─── Input Bar ────────────────────────────────────────────────────────────────
+
+class _PatientSelectionList extends StatelessWidget {
+  final List<PatientModel> patientOptions;
+  const _PatientSelectionList({required this.patientOptions});
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      children: patientOptions.map((patient) {
+        return ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF6C63FF),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          ),
+          onPressed: () {
+            FocusScope.of(context).unfocus();
+            context.read<DoctorChatProvider>().sendAppointmentRequestToPatient(patient);
+          },
+          child: Text(
+            patient.name,
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
 
 class _InputBar extends StatelessWidget {
   final TextEditingController ctrl;

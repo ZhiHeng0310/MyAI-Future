@@ -145,6 +145,7 @@ class InboxService extends ChangeNotifier {
   /// Appointment REQUEST from doctor — includes action to open calendar
   static Future<void> sendAppointmentRequestNotification({
     required String userId,
+    required String doctorId,
     required String doctorName,
     required String message,
   }) async {
@@ -152,14 +153,55 @@ class InboxService extends ChangeNotifier {
       id: '',
       userId: userId,
       title: '📅 Appointment Request from Dr. $doctorName',
-      message: '$message\n\nTap to open calendar and book.',
+      message: '$message\n\nTap to respond and choose a time.',
       type: NotificationType.appointment,
       timestamp: DateTime.now(),
       metadata: {
+        'doctorId': doctorId,
         'doctorName': doctorName,
         'requestMessage': message,
-        'action': 'open_appointments', // triggers calendar navigation in InboxScreen
+        'action': 'open_appointments', // triggers appointment request handling in InboxScreen
       },
+    );
+    await _saveAndNotify(notification);
+  }
+
+  /// Send a general appointment update to a user.
+  static Future<void> sendAppointmentUpdateNotification({
+    required String userId,
+    required String title,
+    required String message,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final notification = NotificationModel(
+      id: '',
+      userId: userId,
+      title: title,
+      message: message,
+      type: NotificationType.appointment,
+      timestamp: DateTime.now(),
+      metadata: {
+        'action': 'open_appointments',
+        ...?metadata,
+      },
+    );
+    await _saveAndNotify(notification);
+  }
+
+  /// Medication review notification that opens the medications tab.
+  static Future<void> sendMedicationReviewNotification({
+    required String userId,
+    required String doctorName,
+  }) async {
+    final notification = NotificationModel(
+      id: '',
+      userId: userId,
+      title: '💊 Review your medications before your visit',
+      message:
+          'Your appointment with Dr. $doctorName is coming up. Please review your medications before the visit.',
+      type: NotificationType.medication,
+      timestamp: DateTime.now(),
+      metadata: {'action': 'open_medications'},
     );
     await _saveAndNotify(notification);
   }
@@ -203,12 +245,13 @@ class InboxService extends ChangeNotifier {
     final notification = NotificationModel(
       id: '',
       userId: userId,
-      title: '💊 Missed Medication',
+      title: '💊 Medication Reminder',
       message:
       'Please take $medicationName ($dosage) — scheduled for $scheduledLabel',
       type: NotificationType.medication,
       timestamp: DateTime.now(),
       metadata: {
+        'action': 'open_medications',
         'medicationId': medicationId,
         'medicationName': medicationName,
         'dosage': dosage,
@@ -218,7 +261,7 @@ class InboxService extends ChangeNotifier {
     await _saveAndNotify(notification);
 
     // Also trigger OS notification
-    await NotificationService.showMedicationReminder(medicationName, dosage);
+    await NotificationService.showReminder(medicationName, dosage, scheduledLabel);
   }
 
   /// Queue update — navigates to queue or appointments screen
