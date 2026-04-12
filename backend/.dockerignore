@@ -1,6 +1,6 @@
 node_modules
 npm-debug.log
-.env.example
+.env
 .env.local
 .git
 .gitignore
