@@ -22,7 +22,7 @@ jobs:
 
     - name: Deploy to Cloud Run
       run: |
-        gcloud run deploy backend-api \
+        gcloud run deploy backend \
           --source . \
           --region asia-southeast1 \
           --project careloop-b2ec8 \
