@@ -111,15 +111,15 @@ class GeminiService {
         console.error('Raw response:', text);
 
         // Return a safe fallback response
-        return {
-          message: text,
-          actions: [],
-          risk: 'low'
-        };
+        throw new Error(
+          `Gemini returned invalid JSON. Raw response: ${text}`
+        );
       }
 
     } catch (error) {
-      console.error('❌ Gemini API error:', error);
+      console.error('❌ GEMINI FULL ERROR');
+      console.error('Message:', error.message);
+      console.error('Stack:', error.stack);
       throw error;
     }
   }
