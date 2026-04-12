@@ -1,9 +1,9 @@
 // ============================================================
 //  firebase_options.dart  (auto-generated — DO NOT EDIT manually)
 //
-//  All values are injected via --dart-define-from-file=env.json.
-//  Copy env.example.json → env.json and fill in your Firebase
-//  project values. env.json is gitignored.
+//  All values are injected via --dart-define-from-file=.env.
+//  Copy env.example.json → .env and fill in your Firebase
+//  project values. .env is gitignored.
 // ============================================================
 
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;

@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../api_service.dart';
 import '../models/checkin_model.dart';
 import '../models/patient_model.dart';
 import '../models/doctor_model.dart';
@@ -204,36 +205,85 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
-    _messages.add(ChatMessage(text: text, isUser: true));
+
+    _messages.add(ChatMessage(
+      text: text,
+      isUser: true,
+    ));
+
     _thinking = true;
     notifyListeners();
-    final response = await _gemini.sendMessage(text);
-    await _processResponse(response, text, isImageScan: false);
+
+    try {
+      final res = await ApiService.sendChat(
+        message: text,
+        patientId: _patient?.id,
+      );
+
+      final message = res['message'] ?? 'No response';
+
+      // optional backend flags (IMPORTANT)
+      final actions = List<String>.from(res['actions'] ?? []);
+      final showCalendar = res['showCalendarPicker'] ?? false;
+      final appointmentSymptoms =
+      List<String>.from(res['appointmentSymptoms'] ?? []);
+
+      _messages.add(ChatMessage(
+        text: message,
+        isUser: false,
+        actions: actions,
+        showCalendarPicker: showCalendar,
+        appointmentSymptoms: appointmentSymptoms,
+      ));
+    } catch (e) {
+      _messages.add(ChatMessage(
+        text: "❌ Server error: $e",
+        isUser: false,
+      ));
+    }
+
+    _thinking = false;
+    notifyListeners();
   }
 
   Future<void> sendMessageWithImage(
-      String text, Uint8List imageBytes, String mimeType) async {
-    final display = text.isEmpty
-        ? '📄 Please scan this medication bill and show me the summary.'
-        : text;
-    _messages.add(ChatMessage(text: display, isUser: true, hasImage: true));
+      String text,
+      Uint8List imageBytes,
+      String mimeType,
+      ) async {
     _messages.add(ChatMessage(
-      text: '📄 Scanning your document... I\'ll provide a clear summary with medication names, prices, and total cost.',
-      isUser: false,
+      text: text.isEmpty
+          ? '📄 Scanning document...'
+          : text,
+      isUser: true,
+      hasImage: true,
     ));
+
     _thinking = true;
     notifyListeners();
 
-    final response =
-    await _gemini.sendMessageWithImage(text, imageBytes, mimeType);
+    try {
+      final res = await ApiService.sendImageChat(
+        message: text,
+        imageBytes: imageBytes,
+        mimeType: mimeType,
+        patientId: _patient?.id,
+      );
 
-    if (_messages.isNotEmpty &&
-        !_messages.last.isUser &&
-        _messages.last.text.contains('Scanning')) {
-      _messages.removeLast();
+      _messages.add(ChatMessage(
+        text: res['message'] ?? 'No response',
+        isUser: false,
+        documentAnalysis: res['documentAnalysis'],
+      ));
+    } catch (e) {
+      _messages.add(ChatMessage(
+        text: "❌ Image processing failed: $e",
+        isUser: false,
+      ));
     }
 
-    await _processResponse(response, text, isImageScan: true);
+    _thinking = false;
+    notifyListeners();
   }
 
   // ══════════════════════════════════════════════════════════════════════════

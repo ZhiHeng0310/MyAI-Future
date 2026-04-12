@@ -1,8 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
-import '../app_config.dart';
+import 'package:http/http.dart' as http;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ENUMS
@@ -124,357 +123,110 @@ class GeminiResponse {
 
 class GeminiService {
   final GeminiRole role;
-  GenerativeModel? _model;
-  ChatSession? _chat;
+  static const String _backendUrl = 'https://backend-362769739395.asia-southeast1.run.app/api/chat';
+
   bool _initialized = false;
 
+  // 1. ADD THESE DECLARATIONS HERE:
   String? _userName;
   String? _diagnosis;
   int? _daysSinceVisit;
   List<String>? _medications;
-  List<String>? _prescribingDoctors;
-  String? _doctorId;
   List<String>? _patientSummaries;
+  String? _doctorId;
+  List<String>? _prescribingDoctors;
 
   GeminiService({required this.role});
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // SESSION INITIALIZATION
-  // ══════════════════════════════════════════════════════════════════════════
-
   Future<void> initSession({
     required String name,
-    required String diagnosis,
-    required int daysSinceVisit,
-    required List<String> medications,
-    List<String>? prescribingDoctors,
-    String? doctorId,
+    String? diagnosis,
+    int? daysSinceVisit,
+    List<String>? medications,
     List<String>? patientSummaries,
+    String? doctorId,
+    List<String>? prescribingDoctors,
+
   }) async {
+    // 2. ASSIGN THEM HERE:
     _userName = name;
     _diagnosis = diagnosis;
     _daysSinceVisit = daysSinceVisit;
     _medications = medications;
-    _prescribingDoctors = prescribingDoctors;
     _doctorId = doctorId;
     _patientSummaries = patientSummaries;
+    _prescribingDoctors = prescribingDoctors;
 
-    try {
-      final apiKey = AppConfig.geminiApiKey;
-      if (apiKey.isEmpty) {
-        throw Exception('Gemini API key not configured in env.json');
+    _initialized = true;
+    debugPrint('✅ GeminiService (Backend Mode) initialized for ${role.name}');
+  }
+
+    Future<String?> generateCheckInQuestion(String diagnosis, int days) async {
+      try {
+        // We send a hidden prompt to the backend to get a single question
+        final response = await sendMessage(
+            "Generate a brief, friendly medical check-in question for a patient with $diagnosis who had their visit $days days ago. Return ONLY the question text."
+        );
+        return response.message;
+      } catch (e) {
+        return "How are you feeling today?"; // Fallback
       }
-
-      _model = GenerativeModel(
-        model: 'gemini-2.5-flash',
-        apiKey: AppConfig.geminiApiKey,
-        generationConfig: GenerationConfig(
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 2048,
-        ),
-        safetySettings: [
-          SafetySetting(HarmCategory.harassment, HarmBlockThreshold.medium),
-          SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.medium),
-          SafetySetting(
-              HarmCategory.sexuallyExplicit, HarmBlockThreshold.medium),
-          SafetySetting(
-              HarmCategory.dangerousContent, HarmBlockThreshold.medium),
-        ],
-        systemInstruction: Content.text(_buildSystemPrompt()),
-      );
-
-      _chat = _model!.startChat();
-      _initialized = true;
-
-      debugPrint('✅ GeminiService initialized for ${role.name}');
-    } catch (e) {
-      debugPrint('❌ GeminiService init error: $e');
-      rethrow;
-    }
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // SYSTEM PROMPTS
-  // ══════════════════════════════════════════════════════════════════════════
-
-  String _buildSystemPrompt() {
-    if (role == GeminiRole.patient) {
-      return '''You are CareLoop AI, a friendly healthcare assistant for patient $_userName.
-
-PATIENT CONTEXT:
-- Name: $_userName
-- Diagnosis: $_diagnosis
-- Days since last visit: $_daysSinceVisit
-- Medications: ${_medications?.join(', ') ?? 'None'}
-${_prescribingDoctors != null && _prescribingDoctors!.isNotEmpty ? '- Prescribing Doctors: ${_prescribingDoctors!.join(', ')}' : '- No doctors assigned yet'}
-
-YOU MUST ALWAYS RESPOND WITH ONLY VALID JSON. ABSOLUTELY NO TEXT BEFORE OR AFTER THE JSON BLOCK.
-
-RESPONSE FORMAT (return this exact structure every single time):
-{
-  "message": "Your friendly response text here",
-  "actions": [],
-  "risk": "low",
-  "appointment_intent": false,
-  "appointment_symptoms": [],
-  "check_medications": false,
-  "feel_unwell": false,
-  "unwell_symptoms": [],
-  "document_analysis": null
-}
-
-=== CAPABILITY 1: FEEL UNWELL ===
-Trigger when patient mentions ANY of these: sick, unwell, pain, ache, fever, headache, nausea, vomiting, dizzy, tired, fatigue, cough, sore throat, chest pain, breathless, hurt, hurts, not feeling well, feeling bad, stomach ache, rash, swollen, bleeding, weak, burning, itching.
-
-When triggered YOU MUST:
-- Set "feel_unwell": true
-- Set "actions": ["alert_all_doctors"]
-- Set "risk": "high" for chest pain / breathing difficulty / unconscious / emergency
-- Set "risk": "medium" for fever / moderate pain / vomiting / dizziness
-- Set "risk": "low" for mild symptoms like a runny nose or slight tiredness
-- List the specific symptoms mentioned in "unwell_symptoms"
-- Write an empathetic message confirming the doctor alert was triggered
-
-Good message example:
-"I'm sorry to hear you're feeling unwell. I've immediately alerted your doctor(s) about your [symptoms]. They will review and respond with advice shortly. Please rest and stay hydrated in the meantime. 🏥"
-
-=== CAPABILITY 2: MEDICATION CHECK ===
-Trigger when patient asks if they took meds, medication status, pill reminders.
-- Set "check_medications": true
-
-=== CAPABILITY 3: BOOK APPOINTMENT ===
-Trigger when patient wants to book, schedule, or see a doctor.
-- Set "appointment_intent": true
-- Set "actions": ["book_appointment"]
-- Extract any reason/symptoms into "appointment_symptoms"
-
-=== GENERAL ===
-For greetings or general health questions: respond warmly. All flags false. risk = "low".
-
-REMEMBER: Return ONLY the JSON object. Nothing else.''';
-    } else {
-      return '''You are CareLoop AI, assisting Dr. $_userName in managing patients.
-
-DOCTOR CONTEXT:
-- Doctor: Dr. $_userName
-- Doctor ID: $_doctorId
-- Patients (via prescriptions): ${_patientSummaries?.join('; ') ?? 'None'}
-
-YOU MUST ALWAYS RESPOND WITH ONLY VALID JSON. NO TEXT BEFORE OR AFTER.
-
-RESPONSE FORMAT:
-{
-  "message": "Your professional response text here",
-  "actions": [],
-  "patient_id": null,
-  "send_to_patient": null
-}
-
-RULES:
-- Add "review_my_patients" when doctor asks about patient status/overview
-- Add "check_patient_status" when doctor asks about a specific patient
-- Add "send_appointment_request" when doctor wants to request an appointment
-- Add "review_recent_alerts" when doctor wants to see recent alerts
-- Add "send_patient_message" when doctor wants to send a message
-- Set "patient_id" to patient name/id hint if doctor mentions a specific patient
-- Set "send_to_patient" to the message text when sending to patient
-
-BE PROFESSIONAL AND CONCISE. Return ONLY the JSON object.''';
-    }
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // CORE AI METHODS
-  // ══════════════════════════════════════════════════════════════════════════
-
-  Future<String> generateCheckInQuestion(
-      String diagnosis, int daysSinceVisit) async {
-    final prompts = [
-      'How are you feeling today?',
-      'Any changes in your symptoms?',
-      'Are you taking your medications regularly?',
-      'How has your $diagnosis been lately?',
-      'Any concerns about your health today?',
-    ];
-
-    if (daysSinceVisit > 7) {
-      prompts.add(
-          'It\'s been $daysSinceVisit days since your last visit. How are you doing?');
     }
 
-    prompts.shuffle();
-    return prompts.first;
-  }
+    // Text-only message to Cloud Run
+    Future<GeminiResponse> sendMessage(String text) async {
+      try {
+        final response = await http.post(
+        Uri.parse(_backendUrl),
+        headers: {'Content-Type': 'application/json'},
+          // Inside sendMessage
+          body: jsonEncode({
+            "role": role == GeminiRole.patient ? "patient" : "doctor",
+            "messages": [{"role": "user", "content": text}],
+            "userContext": {
+              "name": _userName,
+              "role": role.name,
+              "doctorId": _doctorId,
+              "patientSummaries": _patientSummaries,
+              "diagnosis": _diagnosis, // Now this won't be null!
+            }
+          }),
+        );
 
-  Future<GeminiResponse> sendMessage(String text) async {
-    if (!_initialized || _chat == null) {
-      return GeminiResponse(
-        message: 'I\'m having trouble connecting. Please try again.',
-        isError: true,
-      );
-    }
-
-    try {
-      final response = await _chat!.sendMessage(Content.text(text));
-      final responseText = response.text ?? '';
-      debugPrint(
-          '🤖 Gemini raw: ${responseText.substring(0, responseText.length.clamp(0, 300))}');
-      return _parseResponse(responseText);
-    } catch (e) {
-      debugPrint('❌ Gemini sendMessage error: $e — using heuristic fallback');
-      // Fallback runs heuristics on the original USER text so feel_unwell still fires
-      return _parseTextHeuristically(text);
-    }
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // SCAN BILLS — uses its OWN fresh model instance (never the chat session)
-  // Retries across multiple model names to survive 503 / high-demand errors.
-  // ══════════════════════════════════════════════════════════════════════════
-
-  // Models tried in order. Only use the configured model with more retries.
-  static final List<String> _scanModels = [
-    AppConfig.geminiModel,
-    "models/gemini-2.5-flash-lite",
-  ];
-
-  Future<GeminiResponse> sendMessageWithImage(
-      String text,
-      Uint8List imageBytes,
-      String mimeType,
-      ) async {
-    final apiKey = AppConfig.geminiApiKey;
-    if (apiKey.isEmpty) {
-      return GeminiResponse(
-        message: 'Gemini API key not configured. Please check env.json.',
-        isError: true,
-      );
-    }
-
-    // The scan prompt — tells Gemini exactly what to extract.
-    const scanPrompt = '''
-Analyze the medical document or bill in this image.
-
-Extract every line item you can see. For each item record:
-- Exact name as printed
-- Dosage or strength (e.g. 500mg, 10mg/5ml) — empty string if not shown
-- Quantity or frequency (e.g. 30 tabs, twice daily) — empty string if not shown
-- Price for that item — empty string if not shown
-
-Also find the grand total, provider name, and date if visible.
-
-Respond with ONLY valid JSON, no markdown fences, no preamble:
-{
-  "message": "Here is the summary of your document:",
-  "actions": [],
-  "risk": "low",
-  "appointment_intent": false,
-  "appointment_symptoms": [],
-  "check_medications": false,
-  "feel_unwell": false,
-  "unwell_symptoms": [],
-  "document_analysis": {
-    "type": "medication_bill",
-    "summary": "Brief 1-2 sentence summary of what this document contains and the total amount.",
-    "items": [
-      {
-        "name": "item name here",
-        "dosage": "dosage here or empty string",
-        "frequency": "quantity/frequency here or empty string",
-        "price": "price here or empty string",
-        "instructions": "any printed instructions or empty string"
+      if (response.statusCode == 200) {
+      // We use response.body because our backend returns a JSON string
+        return _parseResponse(response.body);
+      } else {
+        return _parseTextHeuristically("Server Error: ${response.statusCode}");
       }
-    ],
-    "key_notes": [
-      "Provider or clinic name if visible",
-      "Service date or bill date if visible",
-      "Any important note such as plan discounts or copay amounts"
-    ],
-    "total_cost": "grand total or patient share amount here",
-    "patient_advice": "One sentence of practical advice for the patient."
-  }
-}
-''';
-
-    final imagePart = DataPart(mimeType, imageBytes);
-    final promptContent = Content.multi([TextPart(scanPrompt), imagePart]);
-
-    // Try each model in sequence; for each model, retry up to 5 times with exponential backoff.
-    for (final modelName in _scanModels) {
-      for (int attempt = 1; attempt <= 5; attempt++) {
-        try {
-          debugPrint('🧾 Trying scan model: $modelName (attempt $attempt)');
-
-          final scanModel = GenerativeModel(
-            model: modelName,
-            apiKey: apiKey,
-            generationConfig: GenerationConfig(
-              temperature: 0.2,   // low temp → more literal extraction
-              maxOutputTokens: 4096,
-            ),
-            safetySettings: [
-              SafetySetting(HarmCategory.harassment, HarmBlockThreshold.medium),
-              SafetySetting(HarmCategory.hateSpeech, HarmBlockThreshold.medium),
-              SafetySetting(
-                  HarmCategory.sexuallyExplicit, HarmBlockThreshold.medium),
-              SafetySetting(
-                  HarmCategory.dangerousContent, HarmBlockThreshold.medium),
-            ],
-          );
-
-          final response = await scanModel
-              .generateContent([promptContent])
-              .timeout(const Duration(seconds: 30));
-
-          final responseText = response.text ?? '';
-          debugPrint('🧾 $modelName raw: ${responseText.substring(0, responseText.length.clamp(0, 400))}');
-
-          final parsed = _parseResponse(responseText);
-
-          // If we got a documentAnalysis back, we're done.
-          if (parsed.documentAnalysis != null) {
-            debugPrint('✅ Scan succeeded with $modelName');
-            return parsed;
-          }
-
-          // Parsed but no document_analysis — still return it (better than error).
-          debugPrint('⚠️ $modelName responded but no document_analysis; returning anyway');
-          return parsed;
         } catch (e) {
-          final msg = e.toString();
-          if (attempt < 5 && (msg.contains('503') ||
-              msg.contains('UNAVAILABLE') ||
-              msg.contains('unavailable'))) {
-            final delaySeconds = 1 << (attempt - 1); // 1, 2, 4, 8, 16
-            debugPrint('⚠️ $modelName attempt $attempt failed (503), retrying in ${delaySeconds}s...');
-            await Future.delayed(Duration(seconds: delaySeconds));
-            continue;
-          }
-          // Not a 503 error or last attempt — log and try next model
-          debugPrint('❌ $modelName failed after $attempt attempts: $e');
-          break; // break inner loop to try next model
-        }
+          return _parseTextHeuristically("Connection error: $e");
       }
     }
 
-    // All models failed — return a helpful error with what we know about the doc
-    debugPrint('❌ All scan models failed');
-    return GeminiResponse(
-      message: '⚠️ The AI service is currently busy. Your document was received but could not be analyzed right now. Please try again in a moment.',
-      documentAnalysis: DocumentAnalysis(
-        type: 'document',
-        summary: 'Document received but analysis unavailable due to high server demand. Please try again shortly.',
-        items: [],
-        keyNotes: [
-          'AI service temporarily overloaded — this is not a problem with your image',
-          'Please tap Scan again in 30-60 seconds',
-        ],
-        patientAdvice: 'Your image looks fine. Please try scanning again shortly.',
-      ),
+    // Image + Text message to Cloud Run
+    Future<GeminiResponse> sendMessageWithImage(String text, Uint8List bytes, String mime) async {
+    try {
+      final response = await http.post(
+      Uri.parse(_backendUrl),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+      "message": text,
+      "image": base64Encode(bytes),
+      "mimeType": mime,
+      "userContext": {"name": _userName, "role": role.name}
+      }),
     );
-  }
+
+    if (response.statusCode == 200) {
+      return _parseResponse(response.body);
+    } else {
+      return _parseTextHeuristically("Image Analysis Error: ${response.statusCode}");
+      }
+    } catch (e) {
+      return _parseTextHeuristically("Scan failed: $e");
+      }
+    }
 
   // ══════════════════════════════════════════════════════════════════════════
   // RESPONSE PARSING
@@ -657,8 +409,6 @@ Respond with ONLY valid JSON, no markdown fences, no preamble:
   // ══════════════════════════════════════════════════════════════════════════
 
   void dispose() {
-    _chat = null;
-    _model = null;
     _initialized = false;
   }
 }

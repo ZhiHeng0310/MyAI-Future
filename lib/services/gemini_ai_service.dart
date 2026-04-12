@@ -8,7 +8,7 @@ class GeminiAIService {
   static GeminiAIService get instance => _instance;
   GeminiAIService._();
 
-  // API key loaded from app_config.dart (via env.json)
+  // API key loaded from app_config.dart (via .env)
 
   late final GenerativeModel _model;
   bool _initialized = false;

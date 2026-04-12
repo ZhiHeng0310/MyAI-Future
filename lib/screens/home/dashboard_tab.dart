@@ -7,6 +7,7 @@ import '../../providers/queue_provider.dart';
 import '../../providers/medication_provider.dart';
 import '../../widgets/stat_card.dart';
 import '../../widgets/upcoming_appointments_widget.dart';
+import '../bill_analyzer/bill_analyzer_screen.dart';
 
 class DashboardTab extends StatelessWidget {
   const DashboardTab({super.key});
@@ -77,6 +78,83 @@ class DashboardTab extends StatelessWidget {
           // ── Upcoming Appointments ──
           if (patient != null)
             UpcomingAppointmentsWidget(userId: patient.id),
+
+          const SizedBox(height: 20),
+
+          // ── AI Bill Analyzer ──
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const BillAnalyzerScreen(),
+                ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.receipt_long,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '💊 AI Bill Analyzer',
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Scan medical bills • Detect errors • Find savings',
+                          style: GoogleFonts.dmSans(
+                            color: Colors.white.withOpacity(0.9),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_forward_ios,
+                    color: Colors.white.withOpacity(0.7),
+                    size: 18,
+                  ),
+                ],
+              ),
+            ),
+          ).animate(delay: 150.ms).fadeIn().slideY(begin: 0.2),
 
           const SizedBox(height: 20),
 

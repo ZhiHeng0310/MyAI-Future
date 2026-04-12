@@ -1,0 +1,24 @@
+{
+  "name": "careloop-backend",
+  "version": "1.0.0",
+  "description": "CareLoop Agentic AI Backend for Cloud Run",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "@google/generative-ai": "^0.21.0",
+    "firebase-admin": "^12.0.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

@@ -102,7 +102,7 @@ class DoctorChatProvider extends ChangeNotifier {
           text: '⚠️ **AI Connection Issue**\n\n'
               'I\'m having trouble connecting to the AI service.\n\n'
               '**To fix:**\n'
-              '1. Check your `env.json` for a valid Gemini API key\n'
+              '1. Check your `.env` for a valid Gemini API key\n'
               '2. Get a key from: https://aistudio.google.com/app/apikey\n'
               '3. Restart the app\n\n'
               'Error: ${e.toString().length > 200 ? e.toString().substring(0, 200) + "..." : e.toString()}',

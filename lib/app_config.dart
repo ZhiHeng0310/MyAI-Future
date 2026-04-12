@@ -6,46 +6,55 @@
 //  Never hardcode secrets here.
 //
 //  Run / build commands:
-//    flutter run   --dart-define-from-file=env.json
-//    flutter build apk --dart-define-from-file=env.json
+//    flutter run   --dart-define-from-file=.env
+//    flutter build apk --dart-define-from-file=.env
 //
-//  Copy env.example.json → env.json and fill in your values.
-//  env.json is gitignored — never commit it.
+//  Copy env.example.json → .env and fill in your values.
+//  .env is gitignored — never commit it.
 // ============================================================
-
-import 'dart:convert';
-import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class AppConfig {
-  static late Map<String, dynamic> _env;
+  /// Helper getter with fallback priority:
+  /// 1. dart-define
+  /// 2. .env
+  /// 3. fallback default
 
-  /// Load config before app starts
-  static Future<void> load() async {
-    final jsonString = await rootBundle.loadString('assets/env.json');
-    _env = json.decode(jsonString);
-  }
-
-  /// Helper: priority order
-  /// 1 dart-define
-  /// 2 env.json
-  /// 3 fallback default
   static String _get(String key, String fallback) {
     const fromDefine = String.fromEnvironment('');
-    if (fromDefine.isNotEmpty) return fromDefine;
 
-    return _env[key] ?? fallback;
+    // NOTE: dart-define is handled per-field below
+    return dotenv.env[key] ?? fallback;
   }
 
   // ─── Gemini ─────────────────────────
-  static String get geminiApiKey =>
-      const String.fromEnvironment('GEMINI_KEY', defaultValue: '') != ''
-          ? const String.fromEnvironment('GEMINI_KEY')
-          : _env['GEMINI_KEY'];
 
-  static String get geminiModel =>
-      _env['GEMINI_MODEL'] ?? 'gemini-1.5-flash';
+  static String get geminiApiKey {
+    const defineValue =
+    String.fromEnvironment('GEMINI_KEY', defaultValue: '');
+
+    if (defineValue.isNotEmpty) return defineValue;
+
+    return dotenv.env['GEMINI_KEY'] ?? '';
+  }
+
+  static String get geminiModel {
+    const defineValue =
+    String.fromEnvironment('GEMINI_MODEL', defaultValue: '');
+
+    if (defineValue.isNotEmpty) return defineValue;
+
+    return dotenv.env['GEMINI_MODEL'] ?? 'gemini-1.5-flash';
+  }
 
   // ─── Clinic ─────────────────────────
-  static String get defaultClinicId =>
-      _env['DEFAULT_CLINIC_ID'] ?? 'clinic_main';
+
+  static String get defaultClinicId {
+    const defineValue =
+    String.fromEnvironment('DEFAULT_CLINIC_ID', defaultValue: '');
+
+    if (defineValue.isNotEmpty) return defineValue;
+
+    return dotenv.env['DEFAULT_CLINIC_ID'] ?? 'clinic_main';
+  }
 }
