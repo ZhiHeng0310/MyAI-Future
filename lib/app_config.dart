@@ -20,6 +20,11 @@ class AppConfig {
   /// 2. .env
   /// 3. fallback default
 
+  static const String apiBaseUrl = String.fromEnvironment(
+      'API_BASE_URL',
+      defaultValue: 'https://backend-362769739395.asia-southeast1.run.app'
+  );
+
   static String _get(String key, String fallback) {
     const fromDefine = String.fromEnvironment('');
 

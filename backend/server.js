@@ -7,6 +7,7 @@ import { config } from './config/config.js';
 import { initializeFirebase } from './config/firebase.js';
 import { geminiService } from './services/geminiService.js';
 import chatRoutes from './routes/chatRoutes.js';
+import rateLimit from 'express-rate-limit';
 
 // Create Express app
 const app = express();
@@ -14,13 +15,41 @@ const port = config.port;
 
 // Middleware
 app.use(cors({
-  origin: '*', // Allow all origins for Cloud Run
+  origin: [
+    'http://localhost:8080',
+    'https://your-flutter-app-domain.com', // Add your actual domain
+    'https://backend-362769739395.asia-southeast1.run.app'
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/api/', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Enhanced request logging
+app.use((req, res, next) => {
+  const timestamp = new Date().toISOString();
+  const ip = req.ip || req.connection.remoteAddress;
+  console.log(`[${timestamp}] ${req.method} ${req.path} - IP: ${ip}`);
+
+  // Log request body for debugging (remove in production)
+  if (process.env.NODE_ENV !== 'production' && req.body) {
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+  }
+
+  next();
+});
 
 // Request logging middleware
 app.use((req, res, next) => {

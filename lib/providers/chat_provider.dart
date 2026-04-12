@@ -215,26 +215,40 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Build conversation history
+      final conversationHistory = _messages
+          .where((m) => m != _messages.last) // Exclude the current message
+          .map((m) => {
+        "role": m.isUser ? "user" : "assistant",
+        "content": m.text,
+      })
+          .toList();
+
+      // Call updated API
       final res = await ApiService.sendChat(
         message: text,
-        patientId: _patient?.id,
+        role: 'patient',
+        userId: _patient?.id,
+        conversationHistory: conversationHistory,
       );
 
       final message = res['message'] ?? 'No response';
-
-      // optional backend flags (IMPORTANT)
       final actions = List<String>.from(res['actions'] ?? []);
-      final showCalendar = res['showCalendarPicker'] ?? false;
-      final appointmentSymptoms =
-      List<String>.from(res['appointmentSymptoms'] ?? []);
+      final risk = res['risk'] ?? 'low';
+      final feelUnwell = res['feel_unwell'] ?? false;
+      final unwellSymptoms = List<String>.from(res['unwell_symptoms'] ?? []);
 
       _messages.add(ChatMessage(
         text: message,
         isUser: false,
         actions: actions,
-        showCalendarPicker: showCalendar,
-        appointmentSymptoms: appointmentSymptoms,
+        risk: risk,
       ));
+
+      // Handle feel unwell action
+      if (feelUnwell && unwellSymptoms.isNotEmpty) {
+        await _handleFeelUnwell(text, unwellSymptoms, risk);
+      }
     } catch (e) {
       _messages.add(ChatMessage(
         text: "❌ Server error: $e",

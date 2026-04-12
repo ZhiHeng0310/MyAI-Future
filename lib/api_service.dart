@@ -1,25 +1,42 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'app_config.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/http.dart' as http_parser;
 
 class ApiService {
-  static const String baseUrl = "https://backend-362769739395.asia-southeast1.run.app";
-  // e.g. https://careloop-backend.onrender.com
+  static const String baseUrl = AppConfig.apiBaseUrl;
 
   /// TEXT CHAT (you already have something like this)
   static Future<Map<String, dynamic>> sendChat({
     required String message,
-    String? patientId,
+    required String role, // 'patient' or 'doctor'
+    String? userId,
+    List<Map<String, dynamic>>? conversationHistory,
   }) async {
     final res = await http.post(
       Uri.parse('$baseUrl/api/chat'),
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({
-        "message": message,
-        "patientId": patientId,
+        "messages": [
+          ...(conversationHistory ?? []),
+          {
+            "role": "user",
+            "content": message,
+          }
+        ],
+        "userContext": {
+          "userId": userId,
+          "patientId": role == 'patient' ? userId : null,
+          "doctorId": role == 'doctor' ? userId : null,
+        },
+        "role": role, // Must be 'patient' or 'doctor'
       }),
     );
+
+    if (res.statusCode != 200) {
+      throw Exception('API Error: ${res.statusCode} - ${res.body}');
+    }
 
     return jsonDecode(res.body);
   }
