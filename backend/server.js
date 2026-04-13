@@ -9,6 +9,8 @@ import { geminiService } from './services/geminiService.js';
 import chatRoutes from './routes/chatRoutes.js';
 import rateLimit from 'express-rate-limit';
 
+console.log('🔥 VERSION WITH ANALYZE BILL ROUTE LOADED');
+
 process.on('unhandledRejection', (err) => {
   console.error('UNHANDLED REJECTION:', err);
 });
