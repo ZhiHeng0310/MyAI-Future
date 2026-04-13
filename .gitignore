@@ -12,7 +12,10 @@ ios/Runner/GoogleService-Info.plist
 .flutter-plugins-dependencies
 .packages
 *.iml
+.firebase/
+firebase-debug.log
 build/
+public/
 
 # Android
 android/.gradle/
