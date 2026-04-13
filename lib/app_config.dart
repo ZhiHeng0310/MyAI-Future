@@ -49,7 +49,7 @@ class AppConfig {
 
     if (defineValue.isNotEmpty) return defineValue;
 
-    return dotenv.env['GEMINI_MODEL'] ?? 'gemini-1.5-flash';
+    return dotenv.env['GEMINI_MODEL'] ?? 'gemini-2.5-flash-lite';
   }
 
   // ─── Clinic ─────────────────────────
