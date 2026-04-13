@@ -5,6 +5,7 @@
   },
   "hosting": {
     "public": "build/web",
+    "site": "careloop-frontend",
     "ignore": [
       "firebase.json",
       "**/.*",

@@ -11,7 +11,7 @@ export const config = {
 
   // Gemini AI
   gemini: {
-    apiKey: process.env.GEMINI_API_KEY?.replace(/(\r\n|\n|\r)/gm, "").trim(),
+    apiKey: process.env.GEMINI_KEY?.replace(/(\r\n|\n|\r)/gm, "").trim(),
     model: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite',
     temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
     maxTokens: parseInt(process.env.GEMINI_MAX_TOKENS) || 1024,
