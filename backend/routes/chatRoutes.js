@@ -119,7 +119,7 @@ router.post('/analyze-bill', async (req, res) => {
 
     const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: config.gemini.model,
       generationConfig: {
         temperature: 0.2,
         maxOutputTokens: 4096,
