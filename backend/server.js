@@ -11,7 +11,7 @@ import rateLimit from 'express-rate-limit';
 
 // Create Express app
 const app = express();
-const port = config.port;
+const port = process.env.PORT || config.port;
 
 // Middleware
 app.use(cors({
@@ -101,37 +101,23 @@ app.use((err, req, res, next) => {
  * Initialize services and start server
  */
 async function startServer() {
-  try {
-    console.log('🚀 Starting CareLoop Backend...');
-    console.log(`📍 Environment: ${config.nodeEnv}`);
-    console.log(`📍 Port: ${port}`);
+  console.log('🚀 Starting CareLoop Backend...');
+  console.log(`📍 Port: ${port}`);
 
-    // Initialize Firebase
-    console.log('🔥 Initializing Firebase...');
-    initializeFirebase();
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`Server running on port ${port}`);
+  });
 
-    // Initialize Gemini AI
-    console.log('🤖 Initializing Gemini AI...');
-    await geminiService.initialize();
-    console.log('✅ Gemini initialized');
+  // 👉 THEN INIT SERVICES (NON-BLOCKING)
+  initializeFirebase();
 
-    // Start listening
-    app.listen(port, '0.0.0.0', () => {
-      console.log('✅ CareLoop Backend is live!');
-      console.log(`📡 Server running on http://0.0.0.0:${port}`);
-      console.log(`🌐 Ready to receive requests`);
-      console.log('\n📋 Available endpoints:');
-      console.log(`   GET  /              - Service info`);
-      console.log(`   POST /api/chat      - AI chat endpoint`);
-      console.log(`   GET  /api/health    - Health check`);
-      console.log(`   POST /api/test      - Test endpoint`);
-      console.log('\n✨ Backend is ready for Cloud Run deployment!\n');
+  geminiService.initialize()
+    .then(() => {
+      console.log('✅ Gemini initialized');
+    })
+    .catch((err) => {
+      console.error('⚠️ Gemini failed (non-fatal):', err.message);
     });
-
-  } catch (error) {
-    console.error('❌ Failed to start server:', error);
-    process.exit(1);
-  }
 }
 
 // Handle graceful shutdown
@@ -143,6 +129,14 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
   console.log('🛑 SIGINT received, shutting down gracefully...');
   process.exit(0);
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('UNHANDLED REJECTION:', err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
 });
 
 // Start the server
