@@ -104,16 +104,33 @@ class GeminiService {
           cleanedText = cleanedText.replace(/```\n?/g, '').replace(/```\n?$/g, '');
         }
 
+        // Also strip any trailing/leading whitespace after cleaning
+        cleanedText = cleanedText.trim();
+
+        // Try to find JSON object boundaries if there's extra text around it
+        const startIdx = cleanedText.indexOf('{');
+        const endIdx = cleanedText.lastIndexOf('}');
+        if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+          cleanedText = cleanedText.substring(startIdx, endIdx + 1);
+        }
+
         const jsonResponse = JSON.parse(cleanedText);
         return jsonResponse;
       } catch (parseError) {
-        console.error('JSON parse error:', parseError);
-        console.error('Raw response:', text);
-
-        // Return a safe fallback response
-        throw new Error(
-          `Gemini returned invalid JSON. Raw response: ${text}`
-        );
+        console.warn('⚠️ Gemini returned non-JSON, wrapping as plain text response');
+        // Instead of throwing, wrap the plain text in a valid response object
+        // This prevents 500 errors on the doctor/patient chat endpoints
+        return {
+          message: text.replace(/```json|```/g, '').trim(),
+          actions: [],
+          risk: 'low',
+          appointment_intent: false,
+          check_medications: false,
+          feel_unwell: false,
+          unwell_symptoms: [],
+          patient_id: null,
+          send_to_patient: null
+        };
       }
 
     } catch (error) {

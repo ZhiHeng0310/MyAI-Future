@@ -990,7 +990,20 @@ class _Bubble extends StatelessWidget {
                   const SizedBox(height: 6),
                   Wrap(
                     spacing: 6,
-                    children: msg.actions.map((a) => _AChip(label: _lbl(a))).toList(),
+                    runSpacing: 4,
+                    children: msg.actions.map((a) {
+                      if (a == 'open_image_picker') {
+                        // Tappable button to open image picker
+                        return _OpenImageChip(
+                          onTap: () {
+                            // Find the nearest ChatScreen ancestor and call its method
+                            final state = context.findAncestorStateOfType<_ChatScreenState>();
+                            state?._showImageOptions();
+                          },
+                        );
+                      }
+                      return _AChip(label: _lbl(a));
+                    }).toList(),
                   ),
                 ],
               ],
@@ -1004,13 +1017,52 @@ class _Bubble extends StatelessWidget {
   String _lbl(String a) {
     switch (a) {
       case 'alert_doctor':          return '🚨 Doctor alerted';
+      case 'alert_all_doctors':     return '🚨 Doctors alerted';
+      case 'alert_support':         return '📞 Support alerted';
       case 'suggest_revisit':       return '📅 Revisit suggested';
       case 'increase_priority':     return '⬆️ Priority raised';
       case 'remind_medication':     return '💊 Reminder sent';
       case 'appointment_confirmed': return '✅ Appointment confirmed';
+      case 'book_appointment':      return '📅 Book appointment';
+      case 'check_medications':     return '💊 Checking meds…';
+      case 'review_my_patients':    return '👥 Reviewing patients';
+      case 'send_patient_message':  return '✉️ Message sent';
       default:                      return a;
     }
   }
+}
+
+class _OpenImageChip extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _OpenImageChip({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) =>
+      GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF00C896).withOpacity(0.12),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFF00C896).withOpacity(0.5)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.upload_file_rounded, size: 13,
+                  color: Color(0xFF00C896)),
+              SizedBox(width: 5),
+              Text('📎 Upload Bill',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF00796B),
+                      fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      );
 }
 
 class _AChip extends StatelessWidget {
@@ -1029,7 +1081,6 @@ class _AChip extends StatelessWidget {
 }
 
 // ─── Typing Dots ──────────────────────────────────────────────────────────────
-
 class _TypingDots extends StatelessWidget {
   const _TypingDots();
   @override
@@ -1073,7 +1124,6 @@ class _TypingDots extends StatelessWidget {
 }
 
 // ─── Input Bar ────────────────────────────────────────────────────────────────
-
 class _InputBar extends StatelessWidget {
   final TextEditingController ctrl;
   final VoidCallback onSend;
@@ -1139,43 +1189,43 @@ class _InputBar extends StatelessWidget {
 
 // ─── Quick Replies ────────────────────────────────────────────────────────────
 
-class _QuickReplies extends StatelessWidget {
+  class _QuickReplies extends StatelessWidget {
   final Function(String) onTap;
   static const _chips = [
-    'How am I doing?',
-    'Book appointment',
-    'Did I take my meds?',
-    'I feel unwell',
-    'Scan my bill 📄',
+  'How am I doing?',
+  'Book appointment',
+  'Did I take my meds?',
+  'I feel unwell',
+  'Scan my bill 📄',
   ];
   const _QuickReplies({required this.onTap});
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      color: const Color(0xFFF8FFFE),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        children: _chips.map((c) => Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: ActionChip(
-            label: Text(c, style: const TextStyle(fontSize: 12)),
-            onPressed: () => onTap(c),
-            backgroundColor: Colors.white,
-            side: const BorderSide(color: Color(0xFFE4E7EC)),
-            padding: EdgeInsets.zero,
-            labelPadding: const EdgeInsets.symmetric(horizontal: 10),
-          ),
-        )).toList(),
-      ),
-    );
+  return Container(
+  height: 40,
+  color: const Color(0xFFF8FFFE),
+  child: ListView(
+  scrollDirection: Axis.horizontal,
+  padding: const EdgeInsets.symmetric(horizontal: 12),
+  children: _chips.map((c) => Padding(
+  padding: const EdgeInsets.only(right: 8),
+  child: ActionChip(
+  label: Text(c, style: const TextStyle(fontSize: 12)),
+  onPressed: () => onTap(c),
+  backgroundColor: Colors.white,
+  side: const BorderSide(color: Color(0xFFE4E7EC)),
+  padding: EdgeInsets.zero,
+  labelPadding: const EdgeInsets.symmetric(horizontal: 10),
+  ),
+  )).toList(),
+  ),
+  );
   }
-}
+  }
 
 // ─── Image Option Button ──────────────────────────────────────────────────────
 
-class _ImgBtn extends StatelessWidget {
+  class _ImgBtn extends StatelessWidget {
   final IconData icon;
   final String   label;
   final Color    color;
@@ -1183,88 +1233,88 @@ class _ImgBtn extends StatelessWidget {
   const _ImgBtn({required this.icon, required this.label, required this.color, required this.onTap});
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 8),
-          Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
-        ],
-      ),
-    ),
+  onTap: onTap,
+  child: Container(
+  padding: const EdgeInsets.symmetric(vertical: 16),
+  decoration: BoxDecoration(
+  color: color.withOpacity(0.1),
+  borderRadius: BorderRadius.circular(14),
+  border: Border.all(color: color.withOpacity(0.3)),
+  ),
+  child: Column(
+  children: [
+  Icon(icon, color: color, size: 28),
+  const SizedBox(height: 8),
+  Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
+  ],
+  ),
+  ),
   );
-}
+  }
 
 // ─── States ───────────────────────────────────────────────────────────────────
 
-class _LoadingState extends StatelessWidget {
+  class _LoadingState extends StatelessWidget {
   const _LoadingState();
   @override
   Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: 72, height: 72,
-          decoration: BoxDecoration(color: const Color(0xFF00C896).withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-          child: const Icon(Icons.smart_toy_rounded, color: Color(0xFF00C896), size: 36),
-        ),
-        const SizedBox(height: 16),
-        Text('CareLoop AI', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        Text('Loading your health profile…', style: GoogleFonts.dmSans(color: const Color(0xFF667085), fontSize: 14)),
-        const SizedBox(height: 24),
-        const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00C896))),
-      ],
-    ),
+  child: Column(
+  mainAxisAlignment: MainAxisAlignment.center,
+  children: [
+  Container(
+  width: 72, height: 72,
+  decoration: BoxDecoration(color: const Color(0xFF00C896).withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+  child: const Icon(Icons.smart_toy_rounded, color: Color(0xFF00C896), size: 36),
+  ),
+  const SizedBox(height: 16),
+  Text('CareLoop AI', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600)),
+  const SizedBox(height: 8),
+  Text('Loading your health profile…', style: GoogleFonts.dmSans(color: const Color(0xFF667085), fontSize: 14)),
+  const SizedBox(height: 24),
+  const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00C896))),
+  ],
+  ),
   );
-}
+  }
 
-class _EmptyState extends StatelessWidget {
+  class _EmptyState extends StatelessWidget {
   const _EmptyState();
   @override
   Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF00C896), size: 48),
-        const SizedBox(height: 16),
-        Text('Start a conversation', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 12),
-        _Hint(Icons.calendar_month_rounded, const Color(0xFF6C63FF), 'Book appointment → pick date & time slot'),
-        _Hint(Icons.notifications_active_rounded, Colors.red, 'Feel unwell → alerts your doctor instantly'),
-        _Hint(Icons.medication_rounded, const Color(0xFF00C896), '"Did I take my meds?" → real-time check'),
-        _Hint(Icons.document_scanner_rounded, Colors.orange, 'Tap 📎 → scan bills & prescriptions'),
-      ],
-    ),
+  child: Column(
+  mainAxisAlignment: MainAxisAlignment.center,
+  children: [
+  const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF00C896), size: 48),
+  const SizedBox(height: 16),
+  Text('Start a conversation', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600)),
+  const SizedBox(height: 12),
+  _Hint(Icons.calendar_month_rounded, const Color(0xFF6C63FF), 'Book appointment → pick date & time slot'),
+  _Hint(Icons.notifications_active_rounded, Colors.red, 'Feel unwell → alerts your doctor instantly'),
+  _Hint(Icons.medication_rounded, const Color(0xFF00C896), '"Did I take my meds?" → real-time check'),
+  _Hint(Icons.document_scanner_rounded, Colors.orange, 'Tap 📎 → scan bills & prescriptions'),
+  ],
+  ),
   );
-}
+  }
 
-class _Hint extends StatelessWidget {
+  class _Hint extends StatelessWidget {
   final IconData icon;
   final Color    color;
   final String   text;
   const _Hint(this.icon, this.color, this.text);
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 4),
-    child: Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-          child: Icon(icon, color: color, size: 14),
-        ),
-        const SizedBox(width: 10),
-        Expanded(child: Text(text, style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF344054)))),
-      ],
-    ),
+  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 4),
+  child: Row(
+  children: [
+  Container(
+  padding: const EdgeInsets.all(6),
+  decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+  child: Icon(icon, color: color, size: 14),
+  ),
+  const SizedBox(width: 10),
+  Expanded(child: Text(text, style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF344054)))),
+  ],
+  ),
   );
-}
+  }

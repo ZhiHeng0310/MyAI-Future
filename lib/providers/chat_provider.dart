@@ -237,21 +237,97 @@ class ChatProvider extends ChangeNotifier {
       final risk = res['risk'] ?? 'low';
       final feelUnwell = res['feel_unwell'] ?? false;
       final unwellSymptoms = List<String>.from(res['unwell_symptoms'] ?? []);
-      final showCalendar = res['showCalendarPicker'] ?? false;
-      final appointmentSymptoms = List<String>.from(res['appointmentSymptoms'] ?? []);
+
+      // ✅ FIX 1: map appointment_intent OR actions containing book_appointment → show calendar
+      final appointmentIntent = res['appointment_intent'] ?? false;
+      final showCalendar = (appointmentIntent == true) ||
+          actions.contains('book_appointment');
+      final appointmentSymptoms =
+      List<String>.from(res['appointmentSymptoms'] ?? []);
+      if (showCalendar) _pendingSymptoms = appointmentSymptoms;
+
+      // ✅ FIX 2: check_medications from response → trigger real medication check
+      final checkMeds = res['check_medications'] ?? false;
+      if ((checkMeds == true) || actions.contains('check_medications')) {
+        final medStatus = await _checkMedicationStatus();
+        final medMsg = _buildMedicationStatusMessage(medStatus);
+
+        // Fire reminders for missed medications
+        if (medStatus != null && !medStatus.noMeds && !medStatus.allTaken) {
+          for (final med in medStatus.missed) {
+            for (final time in med.reminderTimes) {
+              await NotificationService.showReminder(
+                  med.name, med.dosage, time);
+              if (_patient != null) {
+                await InboxService.sendReminder(
+                  userId: _patient!.id,
+                  medicationName: med.name,
+                  dosage: med.dosage,
+                  scheduledTime: time,
+                  medicationId: med.id,
+                );
+              }
+            }
+          }
+        }
+
+        _messages.add(ChatMessage(
+          text: medMsg,
+          isUser: false,
+          risk: 'low',
+          actions: const [],
+          medicationStatus: medStatus,
+        ));
+        _thinking = false;
+        notifyListeners();
+
+        // Save check-in to Firebase
+        if (_patient != null) {
+          await _db.saveCheckIn(CheckIn(
+            id: '',
+            patientId: _patient!.id,
+            userMessage: text,
+            aiResponse: medMsg,
+            risk: 'low',
+            actionsTriggered: [],
+            createdAt: DateTime.now(),
+          ));
+        }
+        return;
+      }
+
+      // ✅ FIX 3: open_image_picker action — just show the message; UI handles the action chip
+      final cleanedActions = actions.where((a) => a != 'book_appointment').toList();
+
+      // Handle feel unwell
+      if (feelUnwell && unwellSymptoms.isNotEmpty) {
+        await _handleFeelUnwell(text, unwellSymptoms, risk);
+      }
 
       _messages.add(ChatMessage(
         text: message,
         isUser: false,
-        actions: actions,
+        actions: cleanedActions,
         risk: risk,
         showCalendarPicker: showCalendar,
         appointmentSymptoms: appointmentSymptoms,
       ));
 
-      // Handle feel unwell action
-      if (feelUnwell && unwellSymptoms.isNotEmpty) {
-        await _handleFeelUnwell(text, unwellSymptoms, risk);
+      // Save check-in to Firebase
+      if (_patient != null) {
+        try {
+          await _db.saveCheckIn(CheckIn(
+            id: '',
+            patientId: _patient!.id,
+            userMessage: text,
+            aiResponse: message,
+            risk: risk,
+            actionsTriggered: cleanedActions,
+            createdAt: DateTime.now(),
+          ));
+        } catch (saveErr) {
+          debugPrint('⚠️ Check-in save failed (non-fatal): $saveErr');
+        }
       }
     } catch (e) {
       _messages.add(ChatMessage(
@@ -713,7 +789,7 @@ class ChatProvider extends ChangeNotifier {
           final minute = int.tryParse(parts[1]) ?? 0;
 
           final scheduledTime =
-              DateTime(now.year, now.month, now.day, hour, minute);
+          DateTime(now.year, now.month, now.day, hour, minute);
           final slotTaken = med.isTakenForSlot(timeStr);
           slotStatus.add(slotTaken);
 
@@ -771,7 +847,7 @@ class ChatProvider extends ChangeNotifier {
           'Great job keeping up with your medication schedule! 💊';
     }
     final untaken =
-      s.all.where((m) => !s.taken.any((t) => t.id == m.id)).toList();
+    s.all.where((m) => !s.taken.any((t) => t.id == m.id)).toList();
 
     if (untaken.isNotEmpty) {
       final list = untaken

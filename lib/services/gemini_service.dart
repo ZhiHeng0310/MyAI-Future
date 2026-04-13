@@ -161,72 +161,72 @@ class GeminiService {
     debugPrint('✅ GeminiService (Backend Mode) initialized for ${role.name}');
   }
 
-    Future<String?> generateCheckInQuestion(String diagnosis, int days) async {
-      try {
-        // We send a hidden prompt to the backend to get a single question
-        final response = await sendMessage(
-            "Generate a brief, friendly medical check-in question for a patient with $diagnosis who had their visit $days days ago. Return ONLY the question text."
-        );
-        return response.message;
-      } catch (e) {
-        return "How are you feeling today?"; // Fallback
-      }
+  Future<String?> generateCheckInQuestion(String diagnosis, int days) async {
+    try {
+      // We send a hidden prompt to the backend to get a single question
+      final response = await sendMessage(
+          "Generate a brief, friendly medical check-in question for a patient with $diagnosis who had their visit $days days ago. Return ONLY the question text."
+      );
+      return response.message;
+    } catch (e) {
+      return "How are you feeling today?"; // Fallback
     }
+  }
 
-    // Text-only message to Cloud Run
-    Future<GeminiResponse> sendMessage(String text) async {
-      try {
-        final response = await http.post(
+  // Text-only message to Cloud Run
+  Future<GeminiResponse> sendMessage(String text) async {
+    try {
+      final response = await http.post(
         Uri.parse(_backendUrl),
         headers: {'Content-Type': 'application/json'},
-          // Inside sendMessage
-          body: jsonEncode({
-            "role": role == GeminiRole.patient ? "patient" : "doctor",
-            "messages": [{"role": "user", "content": text}],
-            "userContext": {
-              "name": _userName,
-              "role": role.name,
-              "doctorId": _doctorId,
-              "patientSummaries": _patientSummaries,
-              "diagnosis": _diagnosis, // Now this won't be null!
-            }
-          }),
-        );
+        // Inside sendMessage
+        body: jsonEncode({
+          "role": role == GeminiRole.patient ? "patient" : "doctor",
+          "messages": [{"role": "user", "content": text}],
+          "userContext": {
+            "name": _userName,
+            "role": role.name,
+            "doctorId": _doctorId,
+            "patientSummaries": _patientSummaries,
+            "diagnosis": _diagnosis, // Now this won't be null!
+          }
+        }),
+      );
 
       if (response.statusCode == 200) {
-      // We use response.body because our backend returns a JSON string
+        // We use response.body because our backend returns a JSON string
         return _parseResponse(response.body);
       } else {
         return _parseTextHeuristically("Server Error: ${response.statusCode}");
       }
-        } catch (e) {
-          return _parseTextHeuristically("Connection error: $e");
-      }
+    } catch (e) {
+      return _parseTextHeuristically("Connection error: $e");
     }
+  }
 
-    // Image + Text message to Cloud Run
-    Future<GeminiResponse> sendMessageWithImage(String text, Uint8List bytes, String mime) async {
+  // Image + Text message to Cloud Run
+  Future<GeminiResponse> sendMessageWithImage(String text, Uint8List bytes, String mime) async {
     try {
       final response = await http.post(
-      Uri.parse(_backendUrl),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-      "message": text,
-      "image": base64Encode(bytes),
-      "mimeType": mime,
-      "userContext": {"name": _userName, "role": role.name}
-      }),
-    );
+        Uri.parse(_backendUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "message": text,
+          "image": base64Encode(bytes),
+          "mimeType": mime,
+          "userContext": {"name": _userName, "role": role.name}
+        }),
+      );
 
-    if (response.statusCode == 200) {
-      return _parseResponse(response.body);
-    } else {
-      return _parseTextHeuristically("Image Analysis Error: ${response.statusCode}");
+      if (response.statusCode == 200) {
+        return _parseResponse(response.body);
+      } else {
+        return _parseTextHeuristically("Image Analysis Error: ${response.statusCode}");
       }
     } catch (e) {
       return _parseTextHeuristically("Scan failed: $e");
-      }
     }
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // RESPONSE PARSING

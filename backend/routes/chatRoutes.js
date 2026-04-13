@@ -266,7 +266,7 @@ Rules:
 
 /**
  * POST /api/chat/image
- * Chat with image context
+ * Chat with image — used for bill/prescription scanning from the chat screen
  */
 router.post('/chat/image', async (req, res) => {
   try {
@@ -280,20 +280,100 @@ router.post('/chat/image', async (req, res) => {
     }
 
     console.log('📸 Image chat request received');
+    console.log('   User ID:', userId);
+    console.log('   Image size:', `${imageBase64.length} chars`);
 
-    // For now, return a placeholder response
-    // TODO: Implement Gemini Vision chat integration
-    res.json({
-      message: "📸 I can see the image! Image chat will be fully implemented soon. For now, you can describe what you see and I'll help you.",
-      actions: [],
-      risk: 'low'
+    // Import Gemini SDK
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const { config } = await import('../config/config.js');
+
+    const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
+    const model = genAI.getGenerativeModel({
+      model: config.gemini.model,
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 2048,
+      }
     });
+
+    const prompt = `${message || 'Please analyse this medical document, bill, or prescription.'}
+
+You are CareLoop AI analysing a medical document image for a patient.
+
+If this is a BILL or RECEIPT:
+- List all medications/services and their prices
+- Flag anything that looks overpriced or unusual
+- Give a friendly plain-language summary
+- Suggest if they should ask their doctor or pharmacist anything
+
+If this is a PRESCRIPTION:
+- List the medications prescribed
+- Explain what each one is typically used for (in simple terms)
+- Note the dosage and frequency
+- Remind them to take as prescribed
+
+If this is a LAB REPORT:
+- Explain the key results in simple patient-friendly language
+- Note anything outside normal range
+- Suggest discussing results with their doctor
+
+Respond ONLY with valid JSON:
+{
+  "message": "Your friendly analysis here",
+  "actions": [],
+  "risk": "low",
+  "appointment_intent": false,
+  "check_medications": false,
+  "feel_unwell": false,
+  "unwell_symptoms": []
+}`;
+
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType: 'image/jpeg',
+          data: imageBase64
+        }
+      },
+      { text: prompt }
+    ]);
+
+    const responseText = result.response.text();
+    console.log('✅ Gemini Vision analysis complete');
+
+    // Parse the JSON response
+    let parsed;
+    try {
+      let cleaned = responseText.trim()
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .trim();
+      const startIdx = cleaned.indexOf('{');
+      const endIdx = cleaned.lastIndexOf('}');
+      if (startIdx !== -1 && endIdx !== -1) {
+        cleaned = cleaned.substring(startIdx, endIdx + 1);
+      }
+      parsed = JSON.parse(cleaned);
+    } catch (_) {
+      // Wrap plain text response
+      parsed = {
+        message: responseText.replace(/```json|```/g, '').trim(),
+        actions: [],
+        risk: 'low',
+        appointment_intent: false,
+        check_medications: false,
+        feel_unwell: false,
+        unwell_symptoms: []
+      };
+    }
+
+    res.json(parsed);
 
   } catch (error) {
     console.error('Image chat error:', error);
     res.status(500).json({
-      message: "Failed to process image chat.",
-      error: error.message,
+      message: "I had trouble reading that image. Please make sure it's a clear photo and try again.",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
       actions: [],
       risk: 'low'
     });

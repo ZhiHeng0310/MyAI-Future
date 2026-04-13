@@ -29,6 +29,9 @@ class EnhancedChatService {
         case ChatIntent.MEDICATION_QUERY:
           return await this.handleMedicationQuery(userId, message, conversationHistory);
 
+        case ChatIntent.SCAN_BILL:
+          return await this.handleScanBillRequest(userId);
+
         case ChatIntent.GENERAL:
         default:
           return await this.handleGeneralQuery(userId, message, conversationHistory);
@@ -55,27 +58,45 @@ DOCTOR CONTEXT:
 - Name: Dr. ${userContext?.name || 'User'}
 - Patient Summaries: ${patientSummaries}`;
 
-      // Generate response
-      const response = await geminiService.generateResponse(
-        message,
-        systemPrompt,
-        conversationHistory
-      );
+      let response;
+      try {
+        // Generate response
+        response = await geminiService.generateResponse(
+          message,
+          systemPrompt,
+          conversationHistory
+        );
+      } catch (geminiError) {
+        console.error('Gemini doctor response error:', geminiError.message);
+        // Return a safe fallback so the doctor always gets a response
+        response = {
+          message: `I'm here to help, Dr. ${userContext?.name || ''}. Could you clarify your question? I'm ready to assist with patient management, alerts, or medical queries.`,
+          actions: [],
+          patient_id: null,
+          send_to_patient: null
+        };
+      }
 
-      // Log the interaction
-      await firestoreService.logChatInteraction({
+      // Log the interaction (non-blocking)
+      firestoreService.logChatInteraction({
         userId: doctorId,
         role: 'doctor',
         message,
         response: JSON.stringify(response),
         intent: 'doctor_query',
         risk: 'n/a'
-      });
+      }).catch(err => console.error('Log error (non-fatal):', err.message));
 
       return response;
     } catch (error) {
       console.error('Error processing doctor message:', error);
-      throw error;
+      // Always return a valid response — never let doctor chat 500
+      return {
+        message: "I'm having a brief technical issue. Please try again in a moment.",
+        actions: [],
+        patient_id: null,
+        send_to_patient: null
+      };
     }
   }
 
@@ -284,8 +305,10 @@ I'll help you find the best available time!`,
    */
   async handleMedicationQuery(userId, message, history) {
     try {
-      // Get patient medications
-      const medications = await firestoreService.getPatientMedications(userId);
+      // Get patient medications (with subcollection + top-level fallback)
+      const medications = await (firestoreService.getPatientMedicationsWithFallback
+        ? firestoreService.getPatientMedicationsWithFallback(userId)
+        : firestoreService.getPatientMedications(userId));
 
       if (medications.length === 0) {
         return {
@@ -361,6 +384,33 @@ Be concise and helpful.`;
         error: error.message
       };
     }
+  }
+
+  /**
+   * Handle bill scan request — prompt user to upload an image
+   * @param {string} userId - Patient ID
+   * @returns {Object}
+   */
+  async handleScanBillRequest(userId) {
+    // Log the interaction (non-blocking)
+    firestoreService.logChatInteraction({
+      userId,
+      role: 'patient',
+      message: 'scan_bill_request',
+      response: 'prompt_to_upload',
+      intent: 'scanBill',
+      risk: 'low'
+    }).catch(() => {});
+
+    return {
+      message: `Sure! Send me your bill! 📸\n\nTap the 📎 **attachment icon** at the bottom of the chat to upload a photo of your medication bill or pharmacy receipt.\n\nI'll:\n✅ Extract all items and prices\n✅ Check for overcharges or errors\n✅ Give you a clear patient-friendly summary\n✅ Suggest potential savings\n\nMake sure the photo is clear and well-lit for the best results!`,
+      actions: ['open_image_picker'],
+      risk: 'low',
+      appointment_intent: false,
+      check_medications: false,
+      feel_unwell: false,
+      unwell_symptoms: []
+    };
   }
 
   /**

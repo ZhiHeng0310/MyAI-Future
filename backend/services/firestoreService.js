@@ -246,6 +246,62 @@ class FirestoreService {
       // Don't throw - this is a non-critical update
     }
   }
+
+  /**
+   * Get all doctors (used when patient has no assigned doctor)
+   * @returns {Promise<Array>}
+   */
+  async getAllDoctors() {
+    this.initialize();
+
+    try {
+      const snapshot = await this.db.collection('doctors').limit(20).get();
+      const doctors = [];
+      snapshot.forEach(doc => {
+        doctors.push({ id: doc.id, ...doc.data() });
+      });
+      return doctors;
+    } catch (error) {
+      console.error('Error getting all doctors:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get top-level medications collection for a patient
+   * Also checks the subcollection path as a fallback
+   * @param {string} userId - Patient ID
+   * @returns {Promise<Array>}
+   */
+  async getPatientMedicationsWithFallback(userId) {
+    this.initialize();
+
+    try {
+      // Primary: subcollection under patient document
+      const subSnap = await this.db
+        .collection('patients').doc(userId)
+        .collection('medications').get();
+
+      if (!subSnap.empty) {
+        const meds = [];
+        subSnap.forEach(doc => meds.push({ id: doc.id, ...doc.data() }));
+        return meds;
+      }
+
+      // Fallback: top-level medications collection filtered by patientId
+      const topSnap = await this.db
+        .collection('medications')
+        .where('patientId', '==', userId)
+        .get();
+
+      const meds = [];
+      topSnap.forEach(doc => meds.push({ id: doc.id, ...doc.data() }));
+      return meds;
+    } catch (error) {
+      console.error('Error getting medications (with fallback):', error);
+      return [];
+    }
+  }
 }
 
 // Export singleton instance

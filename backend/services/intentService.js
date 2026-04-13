@@ -9,6 +9,7 @@ export const ChatIntent = {
   BOOK_APPOINTMENT: 'bookAppointment',
   MEDICATION_QUERY: 'medicationQuery',
   GENERAL: 'general'
+  SCAN_BILL: 'scanBill'
 };
 
 /**
@@ -35,9 +36,14 @@ export function analyzeIntent(message) {
   }
 
   // Medication query patterns
-  if (isMedicationIntent(lowerMessage)) {
+  if (isMedicationIntent('did i take', 'have i taken', 'did i take my', 'took my')) {
     return ChatIntent.MEDICATION_QUERY;
   }
+
+   // Bill scan / analysis patterns
+   if (isBillScanIntent(lowerMessage)) {
+     return ChatIntent.SCAN_BILL;
+   }
 
   // General health question
   return ChatIntent.GENERAL;
@@ -155,6 +161,28 @@ function isMedicationIntent(message) {
 }
 
 /**
+ * Check if message is about scanning / analysing a bill
+ * @param {string} message - Lowercase message
+ * @returns {boolean}
+ */
+function isBillScanIntent(message) {
+  const billKeywords = [
+    'scan bill', 'scan my bill', 'scan the bill',
+    'analyze bill', 'analyse bill', 'analyze my bill', 'analyse my bill',
+    'check bill', 'check my bill', 'read my bill',
+    'medication bill', 'pharmacy bill', 'medical bill',
+    'upload bill', 'send my bill', 'review bill',
+    'analyze this bill', 'analyse this bill',
+    'analyze receipt', 'analyse receipt',
+    'check receipt', 'scan receipt',
+    'analyze medication', 'analyse medication',
+    'please analyze', 'please analyse',
+  ];
+
+  return billKeywords.some(keyword => message.includes(keyword));
+}
+
+/**
  * Extract symptoms from message
  * @param {string} message - User's message
  * @returns {Array<string>} - List of detected symptoms
@@ -223,5 +251,6 @@ export default {
   ChatIntent,
   analyzeIntent,
   extractSymptoms,
-  assessRiskLevel
+  assessRiskLevel，
+  isBillScanIntent: undefined
 };

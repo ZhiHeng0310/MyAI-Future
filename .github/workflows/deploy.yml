@@ -3,6 +3,9 @@ name: Deploy to Cloud Run
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy.yml'
 
 jobs:
   deploy:
@@ -22,8 +25,16 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy backend-api  \
+          gcloud run deploy backend-api \
             --source . \
             --region asia-southeast1 \
             --project careloop-b2ec8 \
-            --allow-unauthenticated
+            --allow-unauthenticated \
+            --memory=512Mi \
+            --cpu=1 \
+            --timeout=60 \
+            --concurrency=80 \
+            --min-instances=0 \
+            --max-instances=10 \
+            --set-env-vars="NODE_ENV=production,GEMINI_MODEL=gemini-1.5-flash" \
+            --set-secrets="GEMINI_API_KEY=GEMINI_API_KEY:latest,FIREBASE_PROJECT_ID=FIREBASE_PROJECT_ID:latest,FIREBASE_CLIENT_EMAIL=FIREBASE_CLIENT_EMAIL:latest,FIREBASE_PRIVATE_KEY=FIREBASE_PRIVATE_KEY:latest"

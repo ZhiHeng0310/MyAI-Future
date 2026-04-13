@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'app_config.dart';
 import 'package:http/http.dart' as http;
-import 'package:http/http.dart' as http_parser;
 
 class ApiService {
   static const String baseUrl = AppConfig.apiBaseUrl;
@@ -41,36 +40,36 @@ class ApiService {
     return jsonDecode(res.body);
   }
 
-  /// ✅ IMAGE CHAT (NEW)
+  /// ✅ IMAGE CHAT — sends base64 JSON to backend Gemini Vision endpoint
   static Future<Map<String, dynamic>> sendImageChat({
     required String message,
     required Uint8List imageBytes,
     required String mimeType,
     String? patientId,
   }) async {
-    final request = http.MultipartRequest(
-      "POST",
-        Uri.parse('$baseUrl/api/chat/image')
-    );
+    try {
+      final imageBase64 = base64Encode(imageBytes);
 
-    request.fields["message"] = message;
-    if (patientId != null) {
-      request.fields["patientId"] = patientId;
+      final res = await http.post(
+        Uri.parse('$baseUrl/api/chat/image'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "message": message,
+          "imageBase64": imageBase64,
+          "role": "patient",
+          "userId": patientId,
+        }),
+      );
+
+      if (res.statusCode != 200) {
+        throw Exception('Image chat API error: ${res.statusCode} - ${res.body}');
+      }
+
+      return jsonDecode(res.body);
+    } catch (e) {
+      print('❌ sendImageChat failed: $e');
+      rethrow;
     }
-
-    request.files.add(
-      http.MultipartFile.fromBytes(
-        "image",
-        imageBytes,
-        filename: "upload.jpg",
-        contentType: http_parser.MediaType.parse(mimeType),
-      ),
-    );
-
-    final streamed = await request.send();
-    final response = await http.Response.fromStream(streamed);
-
-    return jsonDecode(response.body);
   }
 
   /// ✅ BILL ANALYSIS (NEW - USES CLOUD RUN BACKEND)
