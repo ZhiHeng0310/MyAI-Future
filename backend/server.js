@@ -9,6 +9,14 @@ import { geminiService } from './services/geminiService.js';
 import chatRoutes from './routes/chatRoutes.js';
 import rateLimit from 'express-rate-limit';
 
+process.on('unhandledRejection', (err) => {
+  console.error('UNHANDLED REJECTION:', err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+});
+
 // Create Express app
 const app = express();
 app.set('trust proxy', 1);
@@ -106,25 +114,37 @@ async function startServer() {
   console.log('🚀 Starting CareLoop Backend...');
   console.log(`📍 Port: ${port}`);
 
-  // 1. START SERVER FIRST (CRITICAL)
-  const server = app.listen(port, '0.0.0.0', () => {
-    console.log(`✅ Server running on port ${port}`);
-  });
+  let server;
 
-  // 2. THEN INIT SERVICES (NON-BLOCKING SAFE)
-  setTimeout(async () => {
-    try {
-      console.log('🔥 Initializing Firebase...');
-      initializeFirebase();
+  try {
+    // 1. START EXPRESS IMMEDIATELY (CRITICAL)
+    server = app.listen(port, '0.0.0.0', () => {
+      console.log(`✅ Server running on port ${port}`);
+    });
 
-      console.log('🤖 Initializing Gemini...');
-      await geminiService.initialize();
+    // 2. SAFE INIT WRAPPER (NO CRASH ALLOWED)
+    (async () => {
+      try {
+        console.log('🔥 Initializing Firebase...');
+        initializeFirebase();
+        console.log('✅ Firebase ready');
+      } catch (err) {
+        console.error('⚠️ Firebase init failed:', err.message);
+      }
 
-      console.log('✅ All services ready');
-    } catch (err) {
-      console.error('⚠️ Service init failed (non-fatal):', err);
-    }
-  }, 1000);
+      try {
+        console.log('🤖 Initializing Gemini...');
+        await geminiService.initialize();
+        console.log('✅ Gemini ready');
+      } catch (err) {
+        console.error('⚠️ Gemini init failed:', err.message);
+      }
+    })();
+
+  } catch (err) {
+    console.error('💥 FATAL SERVER CRASH:', err);
+    process.exit(1);
+  }
 
   return server;
 }
@@ -138,14 +158,6 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
   console.log('🛑 SIGINT received, shutting down gracefully...');
   process.exit(0);
-});
-
-process.on('unhandledRejection', (err) => {
-  console.error('UNHANDLED REJECTION:', err);
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('UNCAUGHT EXCEPTION:', err);
 });
 
 // Start the server
