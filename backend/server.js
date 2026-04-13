@@ -15,14 +15,9 @@ const port = config.port;
 
 // Middleware
 app.use(cors({
-  origin: [
-    'http://localhost:8080',
-    'https://your-flutter-app-domain.com', // Add your actual domain
-    'https://backend-362769739395.asia-southeast1.run.app'
-  ],
+  origin: "*",
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 const limiter = rateLimit({
