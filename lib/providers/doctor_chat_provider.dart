@@ -1,10 +1,12 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart' hide debugPrint;
+import '../api_service.dart';
 import '../models/doctor_model.dart';
 import '../models/patient_model.dart';
 import '../models/medication_model.dart';
 import '../models/appointment_model.dart';
 import '../models/health_alert_model.dart';
+import '../screens/bill_analyzer/bill_results_screen.dart';
 import '../services/gemini_service.dart';
 import '../services/firestore_service.dart';
 import '../services/notification_service.dart';
@@ -161,12 +163,48 @@ class DoctorChatProvider extends ChangeNotifier {
 
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
-    _messages.add(DoctorChatMessage(text: text, isDoctor: true));
+
+    _messages.add(DoctorChatMessage(
+      text: text,
+      isDoctor: true,
+    ));
+
     _thinking = true;
     notifyListeners();
 
-    final response = await _gemini.sendMessage(text);
-    await _processResponse(response, text);
+    try {
+      final conversationHistory = _messages
+          .take(_messages.length - 1)
+          .map((m) => {
+        "role": m.isDoctor ? "user" : "assistant",
+        "content": m.text,
+      })
+          .toList();
+
+      final res = await ApiService.sendChat(
+        message: text,
+        role: 'doctor',
+        userId: _doctor?.id,
+        conversationHistory: conversationHistory,
+      );
+
+      final message = res['message'] ?? 'No response';
+      final actions = List<String>.from(res['actions'] ?? []);
+
+      _messages.add(DoctorChatMessage(
+        text: message,
+        isDoctor: false,
+        action: actions.isNotEmpty ? actions.first : null,
+      ));
+    } catch (e) {
+      _messages.add(DoctorChatMessage(
+        text: "❌ Connection error: $e\n\nPlease check your connection and try again.",
+        isDoctor: false,
+      ));
+    }
+
+    _thinking = false;
+    notifyListeners();
   }
 
   Future<void> sendMessageWithImage(

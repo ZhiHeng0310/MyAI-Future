@@ -72,4 +72,37 @@ class ApiService {
 
     return jsonDecode(response.body);
   }
+
+  /// ✅ BILL ANALYSIS (NEW - USES CLOUD RUN BACKEND)
+  static Future<Map<String, dynamic>> analyzeBill({
+    required String imageBase64,
+    String? userId,
+  }) async {
+    try {
+      print('📤 Sending bill to backend for analysis...');
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/analyze-bill'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "imageBase64": imageBase64,
+          "userId": userId,
+        }),
+      );
+
+      print('📥 Backend response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        print('✅ Bill analysis successful');
+        return result;
+      } else {
+        print('❌ Backend error: ${response.body}');
+        throw Exception('Backend returned ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ API call failed: $e');
+      rethrow;
+    }
+  }
 }

@@ -21,8 +21,8 @@ jobs:
       uses: google-github-actions/setup-gcloud@v2
 
     - name: Deploy to Cloud Run
-      run: |
-        gcloud run deploy backend \
+      run:
+        gcloud run deploy backend-api \
           --source . \
           --region asia-southeast1 \
           --project careloop-b2ec8 \

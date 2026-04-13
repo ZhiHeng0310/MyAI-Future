@@ -217,14 +217,14 @@ class ChatProvider extends ChangeNotifier {
     try {
       // Build conversation history
       final conversationHistory = _messages
-          .where((m) => m != _messages.last) // Exclude the current message
+          .where((m) => m != _messages.last)
           .map((m) => {
         "role": m.isUser ? "user" : "assistant",
         "content": m.text,
       })
           .toList();
 
-      // Call updated API
+      // ✅ CORRECT API CALL
       final res = await ApiService.sendChat(
         message: text,
         role: 'patient',
@@ -237,12 +237,16 @@ class ChatProvider extends ChangeNotifier {
       final risk = res['risk'] ?? 'low';
       final feelUnwell = res['feel_unwell'] ?? false;
       final unwellSymptoms = List<String>.from(res['unwell_symptoms'] ?? []);
+      final showCalendar = res['showCalendarPicker'] ?? false;
+      final appointmentSymptoms = List<String>.from(res['appointmentSymptoms'] ?? []);
 
       _messages.add(ChatMessage(
         text: message,
         isUser: false,
         actions: actions,
         risk: risk,
+        showCalendarPicker: showCalendar,
+        appointmentSymptoms: appointmentSymptoms,
       ));
 
       // Handle feel unwell action
@@ -251,7 +255,7 @@ class ChatProvider extends ChangeNotifier {
       }
     } catch (e) {
       _messages.add(ChatMessage(
-        text: "❌ Server error: $e",
+        text: "❌ Connection error: ${e.toString()}\n\nPlease check:\n1. Internet connection\n2. Backend is running\n3. Try again in a moment",
         isUser: false,
       ));
     }
