@@ -12,6 +12,7 @@ ios/Runner/GoogleService-Info.plist
 .flutter-plugins-dependencies
 .packages
 *.iml
+build/
 
 # Android
 android/.gradle/

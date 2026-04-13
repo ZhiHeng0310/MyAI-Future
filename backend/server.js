@@ -11,6 +11,8 @@ import rateLimit from 'express-rate-limit';
 
 // Create Express app
 const app = express();
+app.set('trust proxy', 1);
+
 const port = process.env.PORT || config.port;
 
 // Middleware
@@ -104,20 +106,27 @@ async function startServer() {
   console.log('🚀 Starting CareLoop Backend...');
   console.log(`📍 Port: ${port}`);
 
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`Server running on port ${port}`);
+  // 1. START SERVER FIRST (CRITICAL)
+  const server = app.listen(port, '0.0.0.0', () => {
+    console.log(`✅ Server running on port ${port}`);
   });
 
-  // 👉 THEN INIT SERVICES (NON-BLOCKING)
-  initializeFirebase();
+  // 2. THEN INIT SERVICES (NON-BLOCKING SAFE)
+  setTimeout(async () => {
+    try {
+      console.log('🔥 Initializing Firebase...');
+      initializeFirebase();
 
-  geminiService.initialize()
-    .then(() => {
-      console.log('✅ Gemini initialized');
-    })
-    .catch((err) => {
-      console.error('⚠️ Gemini failed (non-fatal):', err.message);
-    });
+      console.log('🤖 Initializing Gemini...');
+      await geminiService.initialize();
+
+      console.log('✅ All services ready');
+    } catch (err) {
+      console.error('⚠️ Service init failed (non-fatal):', err);
+    }
+  }, 1000);
+
+  return server;
 }
 
 // Handle graceful shutdown
