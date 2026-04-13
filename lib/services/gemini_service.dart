@@ -123,7 +123,7 @@ class GeminiResponse {
 
 class GeminiService {
   final GeminiRole role;
-  static const String _backendUrl = 'https://backend-362769739395.asia-southeast1.run.app/api/chat';
+  static const String _backendUrl = 'https://backend-api-362769739395.asia-southeast1.run.app/api/chat';
 
   bool _initialized = false;
 

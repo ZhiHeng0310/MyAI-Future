@@ -3,26 +3,6 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
-  "flutter": {
-    "platforms": {
-      "android": {
-        "default": {
-          "projectId": "careloop-b2ec8",
-          "appId": "1:362769739395:android:2ace747fbbdf0c9a5df5b6",
-          "fileOutput": "android/app/google-services.json"
-        }
-      },
-      "dart": {
-        "lib/firebase_options.dart": {
-          "projectId": "careloop-b2ec8",
-          "configurations": {
-            "android": "1:362769739395:android:2ace747fbbdf0c9a5df5b6",
-            "web": "1:362769739395:web:44cf4c44059886e25df5b6"
-          }
-        }
-      }
-    }
-  },
   "hosting": {
     "public": "build/web",
     "ignore": [
