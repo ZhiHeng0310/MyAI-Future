@@ -13,7 +13,7 @@ export const config = {
   gemini: {
     apiKey: process.env.GEMINI_API_KEY?.replace(/(\r\n|\n|\r)/gm, "").trim(),
     model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
-    temperature: parseFloat(process.env.GEMINI_TEMPERATURE) || 0.7,
+    temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
     maxTokens: parseInt(process.env.GEMINI_MAX_TOKENS) || 1024,
     topK: 40,
     topP: 0.95
