@@ -36,8 +36,5 @@ jobs:
             --concurrency=80 \
             --min-instances=0 \
             --max-instances=10 \
-            --set-env-vars="NODE_ENV=production,GEMINI_MODEL=gemini-2.5-flash-lite" \
             --set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest \
-            --set-secrets=FIREBASE_PROJECT_ID=FIREBASE_PROJECT_ID:latest \
-            --set-secrets=FIREBASE_CLIENT_EMAIL=FIREBASE_CLIENT_EMAIL:latest \
-            --set-secrets=FIREBASE_PRIVATE_KEY=FIREBASE_PRIVATE_KEY:latest
+            --set-secrets=FIREBASE_SERVICE_ACCOUNT=FIREBASE_SERVICE_ACCOUNT:latest
