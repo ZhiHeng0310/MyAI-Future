@@ -23,7 +23,7 @@ process.on('uncaughtException', (err) => {
 const app = express();
 app.set('trust proxy', 1);
 
-const port = process.env.PORT || config.port;
+const port = Number(process.env.PORT) || 8080;
 
 // Middleware
 app.use(cors({

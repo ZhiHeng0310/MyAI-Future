@@ -2,16 +2,16 @@
 // Centralized configuration for CareLoop Backend
 
 import dotenv from 'dotenv';
-dotenv.config();
-
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config();
+}
 export const config = {
   // Server
-  port: process.env.PORT || 8080,
   nodeEnv: process.env.NODE_ENV || 'development',
 
   // Gemini AI
   gemini: {
-    apiKey: process.env.GEMINI_KEY?.replace(/(\r\n|\n|\r)/gm, "").trim(),
+    apiKey: process.env.GEMINI_API_KEY?.replace(/(\r\n|\n|\r)/gm, "").trim(),
     model: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite',
     temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
     maxTokens: parseInt(process.env.GEMINI_MAX_TOKENS) || 1024,

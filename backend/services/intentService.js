@@ -8,7 +8,7 @@ export const ChatIntent = {
   CONTACT_DOCTOR: 'contactDoctor',
   BOOK_APPOINTMENT: 'bookAppointment',
   MEDICATION_QUERY: 'medicationQuery',
-  GENERAL: 'general'
+  GENERAL: 'general',
   SCAN_BILL: 'scanBill'
 };
 
