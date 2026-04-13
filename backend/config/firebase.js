@@ -12,7 +12,7 @@ export function initializeFirebase() {
 
     if (config.firebase.credentialsPath) {
       const serviceAccount = JSON.parse(
-        fs.readFileSync(`./${config.firebase.credentialsPath}`, "utf8")
+        fs.readFileSync(config.firebase.credentialsPath, "utf8")
       );
 
       admin.initializeApp({
