@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- CareLoop splash background — dark brand colour matching the Flutter splash screen -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/black"/>
-    <!-- Optionally add a centered logo here once you have ic_launcher assets -->
-</layer-list>
