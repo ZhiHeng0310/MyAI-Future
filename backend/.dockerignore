@@ -12,7 +12,6 @@ README.md
 coverage
 .nyc_output
 dist
-build
 test
 tests
 *.test.js

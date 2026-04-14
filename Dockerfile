@@ -1,11 +1,18 @@
-# Use nginx to serve Flutter web
+FROM ghcr.io/cirruslabs/flutter:3.41.0 AS build
+
+WORKDIR /app
+
+COPY . .
+
+RUN flutter --version
+RUN flutter pub get
+RUN flutter build web
+
 FROM nginx:alpine
 
-# Remove default config
-RUN rm -rf /usr/share/nginx/html/*
+COPY --from=build /app/build/web /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/nginx.conf
 
-# Copy Flutter build
-COPY build/web /usr/share/nginx/html
+EXPOSE 8080
 
-# Copy custom config (important for Flutter routing)
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+CMD ["nginx", "-g", "daemon off;"]
