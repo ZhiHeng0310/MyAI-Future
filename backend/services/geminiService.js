@@ -115,6 +115,12 @@ class GeminiService {
         }
 
         const jsonResponse = JSON.parse(cleanedText);
+
+        // ✅ FIX: Ensure patient_list is always an array if present
+        if (jsonResponse.patient_list && !Array.isArray(jsonResponse.patient_list)) {
+          jsonResponse.patient_list = [];
+        }
+
         return jsonResponse;
       } catch (parseError) {
         console.warn('⚠️ Gemini returned non-JSON, wrapping as plain text response');
@@ -129,7 +135,8 @@ class GeminiService {
           feel_unwell: false,
           unwell_symptoms: [],
           patient_id: null,
-          send_to_patient: null
+          send_to_patient: null,
+          patient_list: [] // ✅ Add patient_list to fallback
         };
       }
 

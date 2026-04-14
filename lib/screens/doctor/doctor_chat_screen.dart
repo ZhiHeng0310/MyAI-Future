@@ -332,21 +332,63 @@ class _MessageBubble extends StatelessWidget {
                   ),
                 ),
                 // Show action badge if AI performed an action
-                if (!isDoc && msg.action != null) ...[
-                  const SizedBox(height: 6),
-                  _ActionBadge(action: msg.action!),
-                ],
-                if (!isDoc && msg.action == 'choose_appointment_patient' &&
-                    msg.patientOptions != null) ...[
-                  const SizedBox(height: 8),
-                  _PatientSelectionList(patientOptions: msg.patientOptions!),
-                  // After line 342, add:
-                  if (!isDoc && msg.action == 'choose_patient' &&
-                      msg.patientOptions != null) ...{
-                    const SizedBox(height: 8),
-                    _PatientSelectionList(patientOptions: msg.patientOptions!),
-                  },
-                ],
+                if (!isDoc && msg.patientOptions != null && msg.patientOptions!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Select a patient:',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: msg.patientOptions!.map((patient) {
+                            return ActionChip(
+                              avatar: CircleAvatar(
+                                backgroundColor: Theme.of(context).colorScheme.primary,
+                                child: Text(
+                                  patient.name[0].toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              label: Text(patient.name),
+                              onPressed: () {
+                                final provider =
+                                Provider.of<DoctorChatProvider>(context, listen: false);
+
+                                if (msg.action == 'check_patient_status') {
+                                  provider.sendMessage('Check status for ${patient.name}');
+                                } else if (msg.action == 'send_appointment_request') {
+                                  provider.sendAppointmentRequestToPatient(patient);
+                                } else if (msg.action == 'view_alerts') {
+                                  provider.sendMessage('Show alerts for ${patient.name}');
+                                } else if (msg.action == 'review_my_patients') {
+                                  provider.sendMessage('Tell me about ${patient.name}');
+                                }
+                              },
+                              backgroundColor: Colors.white,
+                              side: BorderSide(
+                                color: Theme.of(context).colorScheme.primary,
+                                width: 1,
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),

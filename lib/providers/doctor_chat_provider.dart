@@ -191,10 +191,29 @@ class DoctorChatProvider extends ChangeNotifier {
       final message = res['message'] ?? 'No response';
       final actions = List<String>.from(res['actions'] ?? []);
 
+      // ✅ FIX: Extract patient_list from backend response
+      List<PatientModel>? patientOptions;
+      if (res['patient_list'] != null && res['patient_list'] is List) {
+        try {
+          patientOptions = (res['patient_list'] as List)
+              .map((p) => PatientModel(
+            id: p['id'] ?? '',
+            name: p['name'] ?? 'Unknown',
+            email: '', // Not needed for selection
+            phone: '', // Not needed for selection
+            diagnosis: p['diagnosis'],
+          ))
+              .toList();
+        } catch (e) {
+          debugPrint('❌ Error parsing patient_list: $e');
+        }
+      }
+
       _messages.add(DoctorChatMessage(
         text: message,
         isDoctor: false,
         action: actions.isNotEmpty ? actions.first : null,
+        patientOptions: patientOptions, // ✅ Pass patient options to message
       ));
     } catch (e) {
       _messages.add(DoctorChatMessage(

@@ -302,6 +302,59 @@ class FirestoreService {
       return [];
     }
   }
+
+  /**
+     * Get all patients assigned to a doctor (via prescriptions)
+     * @param {string} doctorId - Doctor's ID
+     * @returns {Promise<Array>} - List of patient objects
+     */
+   async getDoctorPatients(doctorId) {
+     try {
+       if (!this.db) {
+         await this.initialize();
+       }
+
+       // Get all medications prescribed by this doctor
+       const medicationsSnapshot = await this.db
+         .collection('medications')
+         .where('doctorId', '==', doctorId)
+         .get();
+
+       // Extract unique patient IDs
+       const patientIds = new Set();
+       medicationsSnapshot.forEach(doc => {
+         const data = doc.data();
+         if (data.patientId) {
+           patientIds.add(data.patientId);
+         }
+       });
+
+       // Fetch patient details
+       const patients = [];
+       for (const patientId of patientIds) {
+         try {
+           const patientDoc = await this.db
+             .collection('patients')
+             .doc(patientId)
+             .get();
+
+           if (patientDoc.exists) {
+             patients.push({
+               id: patientDoc.id,
+               ...patientDoc.data()
+             });
+           }
+         } catch (err) {
+           console.warn(`Could not fetch patient ${patientId}:`, err.message);
+         }
+       }
+
+       return patients;
+     } catch (error) {
+       console.error('Error getting doctor patients:', error);
+       return [];
+     }
+   }
 }
 
 // Export singleton instance

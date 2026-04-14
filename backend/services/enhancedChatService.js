@@ -48,57 +48,101 @@ class EnhancedChatService {
    * @returns {Promise<Object>} - AI response with actions
    */
   async processDoctorMessage({ message, doctorId, userContext, conversationHistory = [] }) {
-    try {
-      // Build doctor-specific system prompt with context
-      const patientSummaries = userContext?.patientSummaries?.join('; ') || 'None';
-      const systemPrompt = `${config.systemPrompts.doctor}
-
-DOCTOR CONTEXT:
-- ID: ${doctorId}
-- Name: Dr. ${userContext?.name || 'User'}
-- Patient Summaries: ${patientSummaries}`;
-
-      let response;
       try {
-        // Generate response
-        response = await geminiService.generateResponse(
+        // Get doctor's patients for context
+        let doctorPatients = [];
+        try {
+          const patients = await firestoreService.getDoctorPatients(doctorId);
+          doctorPatients = patients.map(p => ({
+            id: p.id,
+            name: p.name || 'Unknown Patient',
+            diagnosis: p.diagnosis || 'N/A'
+          }));
+        } catch (err) {
+          console.warn('Could not load doctor patients:', err.message);
+        }
+
+        // Extract doctor's last name for greeting
+        const doctorName = userContext?.name || 'User';
+        const doctorLastName = doctorName.split(' ').pop(); // Get last word as last name
+
+        // Build patient summaries
+        const patientSummaries = doctorPatients.length > 0
+          ? doctorPatients.map(p => `${p.name} (${p.diagnosis})`).join('; ')
+          : 'None';
+
+        // Build patient list for selection
+        const patientListJson = JSON.stringify(doctorPatients);
+
+        // Build doctor-specific system prompt with context
+        const systemPrompt = `${config.systemPrompts.doctor}
+
+  DOCTOR CONTEXT:
+  - ID: ${doctorId}
+  - Name: Dr. ${doctorName}
+  - Last Name: ${doctorLastName}
+  - Patient Count: ${doctorPatients.length}
+  - Patient Summaries: ${patientSummaries}
+  - Available Patients JSON: ${patientListJson}
+
+  IMPORTANT: When responding to queries about patients, checking status, sending messages, or viewing alerts:
+  1. Always include the patient_list array in your response with ALL available patients
+  2. Greet as "Hello Dr. ${doctorLastName}" not "Hello Dr.User"
+  3. Ask doctor to select which patient they want to interact with
+  4. Format: patient_list: ${patientListJson}`;
+
+        let response;
+        try {
+          // Generate response
+          response = await geminiService.generateResponse(
+            message,
+            systemPrompt,
+            conversationHistory
+          );
+
+          // Ensure patient_list is included for patient-related actions
+          const needsPatientList = response.actions?.some(action =>
+            ['check_patient_status', 'view_alerts', 'send_patient_message', 'send_appointment_request', 'review_my_patients'].includes(action)
+          );
+
+          if (needsPatientList && (!response.patient_list || response.patient_list.length === 0)) {
+            response.patient_list = doctorPatients;
+          }
+        } catch (geminiError) {
+          console.error('Gemini doctor response error:', geminiError.message);
+          // Return a safe fallback so the doctor always gets a response
+          response = {
+            message: `I'm here to help, Dr. ${doctorLastName}. Could you clarify your question? I'm ready to assist with patient management, alerts, or medical queries.`,
+            actions: [],
+            patient_id: null,
+            send_to_patient: null,
+            patient_list: doctorPatients
+          };
+        }
+
+        // Log the interaction (non-blocking)
+        firestoreService.logChatInteraction({
+          userId: doctorId,
+          role: 'doctor',
           message,
-          systemPrompt,
-          conversationHistory
-        );
-      } catch (geminiError) {
-        console.error('Gemini doctor response error:', geminiError.message);
-        // Return a safe fallback so the doctor always gets a response
-        response = {
-          message: `I'm here to help, Dr. ${userContext?.name || ''}. Could you clarify your question? I'm ready to assist with patient management, alerts, or medical queries.`,
+          response: JSON.stringify(response),
+          intent: 'doctor_query',
+          risk: 'n/a'
+        }).catch(err => console.error('Log error (non-fatal):', err.message));
+
+        return response;
+      } catch (error) {
+        console.error('Error processing doctor message:', error);
+        // Always return a valid response — never let doctor chat 500
+        return {
+          message: "I'm having a brief technical issue. Please try again in a moment.",
           actions: [],
           patient_id: null,
-          send_to_patient: null
+          send_to_patient: null,
+          patient_list: []
         };
       }
-
-      // Log the interaction (non-blocking)
-      firestoreService.logChatInteraction({
-        userId: doctorId,
-        role: 'doctor',
-        message,
-        response: JSON.stringify(response),
-        intent: 'doctor_query',
-        risk: 'n/a'
-      }).catch(err => console.error('Log error (non-fatal):', err.message));
-
-      return response;
-    } catch (error) {
-      console.error('Error processing doctor message:', error);
-      // Always return a valid response — never let doctor chat 500
-      return {
-        message: "I'm having a brief technical issue. Please try again in a moment.",
-        actions: [],
-        patient_id: null,
-        send_to_patient: null
-      };
     }
-  }
 
   /**
    * Handle contact doctor request - CRITICAL, NO AI INVOLVED
