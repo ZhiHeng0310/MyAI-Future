@@ -28,6 +28,7 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
+          cd backend
           gcloud run deploy backend-api \
             --source backend \
             --region asia-southeast1 \
