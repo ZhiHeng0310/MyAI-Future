@@ -1,17 +1,14 @@
 FROM node:20-slim
-
 WORKDIR /app
-
 COPY package*.json ./
 
-# ✅ Use install instead of ci
-RUN npm install
+# Use 'npm ci' for production builds to ensure lockfile consistency
+RUN npm ci --only=production
 
 COPY . .
 
+# Cloud Run ignores EXPOSE, but it's good for documentation
 EXPOSE 8080
 
-# ❌ REMOVE HEALTHCHECK (Cloud Run doesn't need it)
-# HEALTHCHECK ...
-
+# Ensure the app binds to 0.0.0.0, not localhost
 CMD ["node", "server.js"]

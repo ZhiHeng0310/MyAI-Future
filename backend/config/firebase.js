@@ -10,7 +10,22 @@ export function initializeFirebase() {
   try {
     console.log("🔥 Initializing Firebase...");
 
-    if (config.firebase.credentialsPath) {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      const serviceAccount = JSON.parse(
+        process.env.FIREBASE_SERVICE_ACCOUNT
+      );
+
+      serviceAccount.private_key =
+        serviceAccount.private_key.replace(/\\n/g, '\n');
+
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
+
+      console.log("✅ Firebase initialized with FIREBASE_SERVICE_ACCOUNT secret");
+    }
+
+    else if (config.firebase.credentialsPath) {
       const serviceAccount = JSON.parse(
         fs.readFileSync(config.firebase.credentialsPath, "utf8")
       );
@@ -31,11 +46,11 @@ export function initializeFirebase() {
         credential: admin.credential.cert({
           projectId: config.firebase.projectId,
           clientEmail: config.firebase.clientEmail,
-          privateKey: config.firebase.privateKey,
+          privateKey: config.firebase.privateKey.replace(/\\n/g, '\n'),
         }),
       });
 
-      console.log("✅ Firebase initialized with environment variables");
+      console.log("✅ Firebase initialized with env vars");
     }
 
     else {

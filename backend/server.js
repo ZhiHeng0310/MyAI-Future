@@ -3,10 +3,20 @@
 
 import express from 'express';
 import cors from 'cors';
+
+console.log("Importing config...");
 import { config } from './config/config.js';
+
+console.log("Importing firebase...");
 import { initializeFirebase } from './config/firebase.js';
+
+console.log("Importing gemini...");
 import { geminiService } from './services/geminiService.js';
+
+console.log("Importing routes...");
 import chatRoutes from './routes/chatRoutes.js';
+
+console.log("Importing rate limit...");
 import rateLimit from 'express-rate-limit';
 
 console.log('🔥 VERSION WITH ANALYZE BILL ROUTE LOADED');
