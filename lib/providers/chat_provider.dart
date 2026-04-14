@@ -357,6 +357,10 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      debugPrint('📤 Sending image to backend...');
+      debugPrint('   Image size: ${imageBytes.length} bytes');
+      debugPrint('   MIME type: $mimeType');
+
       final res = await ApiService.sendImageChat(
         message: text,
         imageBytes: imageBytes,
@@ -364,14 +368,52 @@ class ChatProvider extends ChangeNotifier {
         patientId: _patient?.id,
       );
 
+      debugPrint('✅ Received response from backend');
+
       _messages.add(ChatMessage(
         text: res['message'] ?? 'No response',
         isUser: false,
         documentAnalysis: res['documentAnalysis'],
       ));
     } catch (e) {
+      debugPrint('❌ Image processing error: $e');
+
+      // ✅ FIX: Provide specific, helpful error messages
+      String errorMessage;
+      if (e.toString().contains('timeout') || e.toString().contains('Timeout')) {
+        errorMessage = "⏱️ **Request timed out**\n\n"
+            "The image is taking too long to process. This might be because:\n"
+            "• The image is too large (try a smaller photo)\n"
+            "• Poor internet connection\n"
+            "• Server is busy\n\n"
+            "**Please try again** with a clearer, smaller image.";
+      } else if (e.toString().contains('Failed to fetch') || e.toString().contains('Connection')) {
+        errorMessage = "🌐 **Connection Error**\n\n"
+            "Cannot connect to the server. Please check:\n"
+            "• Your internet connection\n"
+            "• Backend server is running\n"
+            "• Try again in a moment\n\n"
+            "If the problem persists, please contact support.";
+      } else if (e.toString().contains('500') || e.toString().contains('Server error')) {
+        errorMessage = "🔧 **Server Error**\n\n"
+            "The server encountered an error processing your image.\n\n"
+            "**Please try:**\n"
+            "• Taking a clearer photo\n"
+            "• Ensuring the bill/document is well-lit\n"
+            "• Trying again in a few moments\n\n"
+            "Error details: ${e.toString().split(':').last.trim()}";
+      } else {
+        errorMessage = "❌ **Image Processing Failed**\n\n"
+            "We couldn't analyze this image. Please ensure:\n"
+            "• The image is clear and well-lit\n"
+            "• The document is fully visible\n"
+            "• The file is a valid image format\n\n"
+            "**Error**: ${e.toString()}\n\n"
+            "💡 **Tip**: Try taking a new photo or use the Bill Analyzer for better results.";
+      }
+
       _messages.add(ChatMessage(
-        text: "❌ Image processing failed: $e",
+        text: errorMessage,
         isUser: false,
       ));
     }
@@ -882,21 +924,57 @@ class ChatProvider extends ChangeNotifier {
       String message, List<String> symptoms, String riskLevel) async {
     if (_patient == null) return;
 
-    if (_prescribingDoctors.isEmpty) {
+    debugPrint('🚨 FEEL UNWELL triggered for ${_patient!.name}');
+    debugPrint('   Symptoms: $symptoms');
+    debugPrint('   Risk: $riskLevel');
+
+    // ✅ FIX: Try to get assigned doctor first, then prescribing doctors, then all doctors
+    List<DoctorModel> targetDoctors = [];
+
+    // Try assigned doctor first
+    if (_patient!.assignedDoctorId != null && _patient!.assignedDoctorId!.isNotEmpty) {
       try {
-        final all = await _db.getAllDoctors();
-        if (all.isNotEmpty) _prescribingDoctors = [all.first];
-      } catch (_) {}
+        final assignedDoctor = await _db.getDoctor(_patient!.assignedDoctorId!);
+        if (assignedDoctor != null) {
+          targetDoctors.add(assignedDoctor);
+          debugPrint('✅ Found assigned doctor: ${assignedDoctor.name}');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Could not get assigned doctor: $e');
+      }
     }
 
-    if (_prescribingDoctors.isEmpty) {
+    // If no assigned doctor, try prescribing doctors
+    if (targetDoctors.isEmpty && _prescribingDoctors.isNotEmpty) {
+      targetDoctors = _prescribingDoctors;
+      debugPrint('✅ Using ${_prescribingDoctors.length} prescribing doctor(s)');
+    }
+
+    // If still empty, get all doctors as fallback
+    if (targetDoctors.isEmpty) {
+      try {
+        final all = await _db.getAllDoctors();
+        if (all.isNotEmpty) {
+          targetDoctors = [all.first];
+          debugPrint('✅ Using fallback doctor: ${all.first.name}');
+        }
+      } catch (e) {
+        debugPrint('❌ Could not get any doctors: $e');
+      }
+    }
+
+    if (targetDoctors.isEmpty) {
+      debugPrint('❌ No doctors available to send alert');
       await NotificationService.showHealthAlert(
           '${_patient!.name} reported: $message');
       return;
     }
 
-    for (final doctor in _prescribingDoctors) {
+    debugPrint('📤 Sending alerts to ${targetDoctors.length} doctor(s)');
+
+    for (final doctor in targetDoctors) {
       try {
+        // Create health alert in Firestore
         final alert = HealthAlert(
           id: '',
           patientId: _patient!.id,
@@ -908,7 +986,9 @@ class ChatProvider extends ChangeNotifier {
           createdAt: DateTime.now(),
         );
         await _db.createHealthAlert(alert);
+        debugPrint('✅ Created alert in Firestore for Dr. ${doctor.name}');
 
+        // Send push notification
         await NotificationService.sendPushToUser(
           userId: doctor.id,
           userCollection: 'doctors',
@@ -916,7 +996,9 @@ class ChatProvider extends ChangeNotifier {
           body: '$message (Risk: $riskLevel)',
           channel: 'careloop_alerts',
         );
+        debugPrint('✅ Sent push notification to Dr. ${doctor.name}');
 
+        // Create inbox message
         await _db.createDoctorInboxMessage(DoctorInboxMessage(
           id: '',
           doctorId: doctor.id,
@@ -928,20 +1010,27 @@ class ChatProvider extends ChangeNotifier {
           read: false,
           createdAt: DateTime.now(),
         ));
+        debugPrint('✅ Created inbox message for Dr. ${doctor.name}');
 
-        debugPrint('✅ Sent health alert to Dr. ${doctor.name}');
+        debugPrint('✅✅✅ Successfully sent all alerts to Dr. ${doctor.name}');
       } catch (e) {
         debugPrint('❌ Failed to alert Dr. ${doctor.name}: $e');
+        debugPrint('Stack trace: ${StackTrace.current}');
       }
     }
 
     // Let patient know the alert was sent
-    await InboxService.sendDoctorMessage(
-      userId: _patient!.id,
-      doctorName: 'CareLoop AI',
-      message:
-      '🔔 Your health alert has been sent to your doctor(s). They will respond shortly.',
-    );
+    try {
+      await InboxService.sendDoctorMessage(
+        userId: _patient!.id,
+        doctorName: 'CareLoop AI',
+        message:
+        '🔔 Your health alert has been sent to your doctor(s). They will respond shortly.',
+      );
+      debugPrint('✅ Sent confirmation to patient');
+    } catch (e) {
+      debugPrint('❌ Failed to send patient confirmation: $e');
+    }
   }
 
   // ══════════════════════════════════════════════════════════════════════════

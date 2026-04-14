@@ -340,6 +340,12 @@ class _MessageBubble extends StatelessWidget {
                     msg.patientOptions != null) ...[
                   const SizedBox(height: 8),
                   _PatientSelectionList(patientOptions: msg.patientOptions!),
+                  // After line 342, add:
+                  if (!isDoc && msg.action == 'choose_patient' &&
+                      msg.patientOptions != null) ...{
+                    const SizedBox(height: 8),
+                    _PatientSelectionList(patientOptions: msg.patientOptions!),
+                  },
                 ],
               ],
             ),
@@ -362,6 +368,7 @@ class _ActionBadge extends StatelessWidget {
       case 'choose_appointment_patient': return '👥 Select a patient';
       case 'send_patient_message':     return '💬 Message sent to patient';
       case 'acknowledge_alert':        return '✅ Alert acknowledged';
+      case 'choose_patient': return '👥 Select a patient';
       default:                         return action;
     }
   }

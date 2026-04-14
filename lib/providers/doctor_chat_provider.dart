@@ -253,6 +253,19 @@ class DoctorChatProvider extends ChangeNotifier {
         query.toLowerCase().contains('patient status') ||
         query.toLowerCase().contains('my patients today')) {
       displayMsg = await _handleHowAreMyPatients();
+
+      // ✅ FIX: Add patient selection UI
+      if (_myPatients.isNotEmpty) {
+        _messages.add(DoctorChatMessage(
+          text: displayMsg,
+          isDoctor: false,
+          action: 'choose_patient',  // This will render patient blocks
+          patientOptions: List<PatientModel>.from(_myPatients),
+        ));
+        _thinking = false;
+        notifyListeners();
+        return;
+      }
     }
 
     // SPEC FEATURE 4: Review Recent Alerts (last 24 hours)
@@ -271,6 +284,11 @@ class DoctorChatProvider extends ChangeNotifier {
     // SPEC FEATURE 3: Send Appointment Request (with calendar button)
     if (response.actions.contains('send_appointment_request') ||
         response.actions.contains('book_appointment')) {
+      debugPrint('📅 Send appointment request triggered');
+      debugPrint('   patientId: ${response.patientId}');
+      debugPrint('   sendToPatient: ${response.sendToPatient}');
+      debugPrint('   myPatients count: ${_myPatients.length}');
+
       if (response.patientId != null && response.sendToPatient != null) {
         await _handleSendAppointmentRequest(
             response.patientId, response.sendToPatient!);
@@ -281,6 +299,7 @@ class DoctorChatProvider extends ChangeNotifier {
           displayMsg = 'I could not identify a patient who has prescriptions yet. '
               'Please prescribe medication to a patient before requesting an appointment.';
         } else {
+          debugPrint('✅ Showing patient selection UI');
           _messages.add(DoctorChatMessage(
             text: 'Select a patient from your prescription list to request an appointment:',
             isDoctor: false,
@@ -364,7 +383,6 @@ class DoctorChatProvider extends ChangeNotifier {
       report.writeln('');
     }
 
-    // FIX: use getRecentAlertsForDoctor
     try {
       final alerts =
       await _db.getRecentAlertsForDoctor(_doctor!.id);
@@ -375,6 +393,16 @@ class DoctorChatProvider extends ChangeNotifier {
         report.writeln('\n✅ No recent alerts in the last 24 hours.');
       }
     } catch (_) {}
+
+    // ✅ FIX: Add patient selection UI after the report
+    report.writeln('\n━━━━━━━━━━━━━━━━━━━━');
+    report.writeln('\n👥 **Select a patient below to:**');
+    report.writeln('• Check their status');
+    report.writeln('• Send appointment request');
+    report.writeln('• Send a message');
+
+    // This will be handled by adding patientOptions to the message
+    // See the _processResponse fix below
 
     return report.toString();
   }
@@ -387,8 +415,11 @@ class DoctorChatProvider extends ChangeNotifier {
     if (_doctor == null) return 'No doctor context available.';
 
     try {
-      // FIX: use getRecentAlertsForDoctor (correct method on FirestoreService)
+      debugPrint('📊 Loading recent alerts for Dr. ${_doctor!.id}');
+
       final recent = await _db.getRecentAlertsForDoctor(_doctor!.id);
+
+      debugPrint('   Found ${recent.length} alert(s)');
 
       if (recent.isEmpty) {
         return '✅ **No recent alerts.**\n\nAll your patients are doing well!';
@@ -398,24 +429,36 @@ class DoctorChatProvider extends ChangeNotifier {
       report.writeln('🚨 **Recent Alerts (Last 24 Hours)**\n');
       report.writeln('Found ${recent.length} alert(s):\n');
 
-      for (final alert in recent) {
-        final timeAgo = _getTimeAgo(alert.createdAt);
-        report.writeln('━━━━━━━━━━━━━━━━━━━━');
-        report.writeln('👤 **${alert.patientName}**');
-        report.writeln('⏰ $timeAgo');
-        report.writeln('⚠️ Risk: ${alert.riskLevel.toUpperCase()}');
-        report.writeln('💬 Message: ${alert.message}');
-        report.writeln('📊 Status: ${alert.status}');
-        if (alert.doctorResponse != null) {
-          report.writeln('💬 Your response: ${alert.doctorResponse}');
+      // ✅ FIX: Use indexed for loop with bounds checking
+      for (int i = 0; i < recent.length; i++) {
+        try {
+          final alert = recent[i];
+          final timeAgo = _getTimeAgo(alert.createdAt);
+
+          report.writeln('━━━━━━━━━━━━━━━━━━━━');
+          report.writeln('👤 **${alert.patientName ?? "Unknown Patient"}**');
+          report.writeln('⏰ $timeAgo');
+          report.writeln('⚠️ Risk: ${(alert.riskLevel ?? "low").toUpperCase()}');
+          report.writeln('💬 Message: ${alert.message ?? "No message"}');
+          report.writeln('📊 Status: ${alert.status ?? "pending"}');
+          if (alert.doctorResponse != null && alert.doctorResponse!.isNotEmpty) {
+            report.writeln('💬 Your response: ${alert.doctorResponse}');
+          }
+          report.writeln('');
+        } catch (e) {
+          debugPrint('❌ Error processing alert at index $i: $e');
+          // Skip this alert and continue
+          continue;
         }
-        report.writeln('');
       }
 
       return report.toString();
     } catch (e) {
       debugPrint('❌ Error loading alerts: $e');
-      return '❌ Unable to load recent alerts. Please try again.';
+      debugPrint('Stack trace: ${StackTrace.current}');
+      return '❌ **Unable to load recent alerts**\n\n'
+          'Error: ${e.toString()}\n\n'
+          'Please try again or contact support if the problem persists.';
     }
   }
 
