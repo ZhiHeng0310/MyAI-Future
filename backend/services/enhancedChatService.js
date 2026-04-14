@@ -1,6 +1,6 @@
 // services/enhancedChatService.js
 // Enhanced AI Chat Service with full agentic capabilities
-
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { geminiService } from './geminiService.js';
 import { firestoreService } from './firestoreService.js';
 import { analyzeIntent, ChatIntent, extractSymptoms, assessRiskLevel } from './intentService.js';

@@ -412,6 +412,23 @@ router.post('/test', async (req, res) => {
   }
 });
 
+router.post('/api/send-notification', async (req, res) => {
+  const { userId, title, message, type, metadata } = req.body;
+
+  // Create notification in Firestore
+  await db.collection('notifications').add({
+    userId,
+    title,
+    message,
+    type: type || 'general',
+    isRead: false,
+    timestamp: FieldValue.serverTimestamp(),
+    metadata: metadata || {}
+  });
+
+  res.json({ success: true });
+});
+
 /**
  * Parse Gemini JSON response (handles markdown code blocks)
  */

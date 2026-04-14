@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:http/http.dart' as http;
 import '../api_service.dart';
 import '../app_config.dart' hide ApiService;
 import '../models/bill_analysis_model.dart';
@@ -175,67 +176,29 @@ class BillAnalyzerService {
     required BillAnalysis analysis,
     required String question,
   }) async {
-    try {
-      // ✅ FIX: Check if API key is valid before calling
-      if (AppConfig.geminiApiKey.isEmpty ||
-          AppConfig.geminiApiKey == 'your-gemini-api-key-here') {
-        return '❌ AI service is not configured. Please add your Gemini API key to enable bill chat.';
-      }
+    final response = await http.post(
+      Uri.parse('${AppConfig.apiBaseUrl}/api/chat'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'messages': [
+          {
+            'role': 'system',
+            'content': 'Bill context: ${analysis.summary}',
+          },
+          {
+            'role': 'user',
+            'content': question,
+          }
+        ],
+        'role': 'patient',
+      }),
+    );
 
-      final model = GenerativeModel(
-        model: AppConfig.geminiModel,
-        apiKey: AppConfig.geminiApiKey,
-        generationConfig: GenerationConfig(
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 1024,
-        ),
-      );
-
-      final billContext = '''
-Bill Analysis Context:
-- Pharmacy: ${analysis.pharmacyName ?? 'Unknown'}
-- Date: ${analysis.billDate ?? 'Unknown'}
-- Total: RM ${analysis.totalAmount.toStringAsFixed(2)}
-- Items: ${analysis.items
-          .map((i) => '${i.name} (${i.quantity}x RM${i.price})')
-          .join(', ')}
-- Flags: ${analysis.flags.map((f) => '${f.title}: ${f.description}').join('; ')}
-- Summary: ${analysis.summary}
-
-User Question: $question
-
-Instructions: You are a helpful medical bill advisor. Answer the user's question based on the bill context above. 
-Be concise, friendly, and helpful. Focus on practical advice and clear explanations.
-''';
-
-      final response = await model.generateContent([Content.text(billContext)]);
-      return response.text ?? 'Sorry, I could not generate a response.';
-    } catch (e) {
-      debugPrint('❌ Error in chat: $e');
-      final errorMessage = e.toString().toLowerCase();
-
-      // ✅ IMPROVED: More specific error handling
-      if (errorMessage.contains('unregistered callers') ||
-          errorMessage.contains('api consumer identity')) {
-        return '❌ AI service authentication failed. Please ensure your Gemini API key is properly configured in the app settings.';
-      } else if (errorMessage.contains('api key') ||
-          errorMessage.contains('invalid_api_key') ||
-          errorMessage.contains('invalid key')) {
-        return '❌ Invalid AI service API key. Please check your Gemini API key configuration.';
-      } else if (errorMessage.contains('quota') ||
-          errorMessage.contains('rate limit')) {
-        return '⚠️ The AI service is temporarily unavailable due to high usage. Please try again in a few minutes.';
-      } else if (errorMessage.contains('network') ||
-          errorMessage.contains('connection')) {
-        return '📡 Network error. Please check your internet connection and try again.';
-      }
-      return '❌ An unexpected error occurred: ${e.toString().substring(0, e
-          .toString()
-          .length < 100 ? e
-          .toString()
-          .length : 100)}';
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['message'];
     }
+
+    throw Exception('Failed to chat: ${response.body}');
   }
 }

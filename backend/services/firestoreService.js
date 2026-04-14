@@ -136,6 +136,22 @@ class FirestoreService {
           isRead: false
         });
 
+      //Create a notification
+      await this.db.collection('notifications').add({
+          userId: doctorId,
+          title: '🚨 Urgent: Patient Needs Attention',
+          message: `${patientName} reports: "${message}"`,
+          type: 'doctor',
+          isRead: false,
+          timestamp: this.FieldValue.serverTimestamp(),
+          metadata: {
+            patientId,
+            patientName,
+            urgentMessageId: urgentMessageRef.id,
+            action: 'urgent_patient_message'
+          }
+        });
+
       return urgentMessageRef.id;
     } catch (error) {
       console.error('Error sending urgent message:', error);

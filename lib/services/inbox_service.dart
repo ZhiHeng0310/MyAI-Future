@@ -106,16 +106,17 @@ class InboxService extends ChangeNotifier {
   Future<void> markAllAsRead() async {
     if (_currentUserId == null) return;
     try {
-      final batch = _firestore.batch();
-      final unreadDocs = await _firestore
+      // Get all notifications (no isRead filter = no composite index needed)
+      final allDocs = await _firestore
           .collection('notifications')
           .where('userId', isEqualTo: _currentUserId)
-          .where('isRead', isEqualTo: false)
           .get();
-      for (var doc in unreadDocs.docs) {
-        batch.update(doc.reference, {'isRead': true});
-      }
-      await batch.commit();
+
+      // Filter unread locally
+      final unreadDocs = allDocs.docs.where((doc) {
+        final data = doc.data();
+        return data['isRead'] != true;
+      }).toList();
     } catch (e) {
       debugPrint('Error marking all as read: $e');
     }
