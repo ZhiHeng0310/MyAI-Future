@@ -42,6 +42,10 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+app.options('*', cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 requests per windowMs
@@ -50,9 +54,12 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 
-app.use('/api/', limiter);
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use('/api/', (req, res, next) => {
+  if (req.method === 'OPTIONS') return next(); // 🔥 skip preflight
+  return limiter(req, res, next);
+});
+// Mount API routes
+app.use('/api', chatRoutes);
 
 // Enhanced request logging
 app.use((req, res, next) => {
@@ -91,7 +98,6 @@ app.get('/', (req, res) => {
 });
 
 // Mount API routes
-app.use('/api', chatRoutes);
 
 // 404 handler
 app.use((req, res) => {
