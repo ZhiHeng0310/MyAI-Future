@@ -176,29 +176,66 @@ class BillAnalyzerService {
     required BillAnalysis analysis,
     required String question,
   }) async {
-    final response = await http.post(
-      Uri.parse('${AppConfig.apiBaseUrl}/api/chat'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'messages': [
-          {
-            'role': 'system',
-            'content': 'Bill context: ${analysis.summary}',
+    try {
+      debugPrint('💬 Sending bill chat to backend...');
+      debugPrint('   Question: $question');
+
+      // ✅ FIX: Use dedicated bill chat endpoint with full bill context
+      final response = await http.post(
+        Uri.parse('${AppConfig.apiBaseUrl}/api/chat/bill'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'question': question,
+          'billAnalysis': {
+            'pharmacyName': analysis.pharmacyName,
+            'billDate': analysis.billDate,
+            'subtotal': analysis.subtotal,
+            'tax': analysis.tax,
+            'totalAmount': analysis.totalAmount,
+            'items': analysis.items.map((item) => {
+              'name': item.name,
+              'quantity': item.quantity,
+              'price': item.price,
+              'total_price': item.totalPrice ?? item.price,
+              'category': item.category,
+              'description': item.description,
+            }).toList(),
+            'flags': analysis.flags.map((flag) => {
+              'title': flag.title,
+              'description': flag.description,
+              'severity': flag.severity,
+              'type': flag.type,
+              'potential_savings': flag.potentialSavings ?? 0,
+            }).toList(),
+            'summary': analysis.summary,
+            'suggestions': analysis.suggestions,
+            'potentialTotalSavings': analysis.potentialTotalSavings ?? 0,
           },
-          {
-            'role': 'user',
-            'content': question,
-          }
-        ],
-        'role': 'patient',
-      }),
-    );
+        }),
+      ).timeout(const Duration(seconds: 30));
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['message'];
+      debugPrint('   Response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final message = data['message'] as String;
+        debugPrint('✅ Bill chat response received: ${message.substring(0, message.length < 100 ? message.length : 100)}...');
+        return message;
+      } else {
+        debugPrint('❌ Bill chat failed: ${response.statusCode}');
+        throw Exception('Server error: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('❌ Error in bill chat: $e');
+
+      // ✅ More helpful error message
+      if (e.toString().contains('timeout') || e.toString().contains('TimeoutException')) {
+        return '⏱️ The request took too long. Please try asking a simpler question.';
+      } else if (e.toString().contains('SocketException') || e.toString().contains('connection')) {
+        return '📡 Cannot connect to the server. Please check your internet connection and try again.';
+      }
+
+      return '❌ I had trouble answering that. Please try rephrasing your question or contact support if the problem continues.';
     }
-
-    throw Exception('Failed to chat: ${response.body}');
   }
 }

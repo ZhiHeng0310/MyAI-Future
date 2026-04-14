@@ -94,6 +94,104 @@ router.post('/chat', async (req, res) => {
 });
 
 /**
+ * POST /api/chat/bill
+ * Chat about a specific bill analysis
+ */
+router.post('/chat/bill', async (req, res) => {
+  try {
+    const { question, billAnalysis } = req.body;
+
+    console.log('💰 Bill chat request received');
+    console.log('   Question:', question);
+    console.log('   Bill total:', billAnalysis?.totalAmount);
+
+    if (!question || !billAnalysis) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'Question and billAnalysis are required'
+      });
+    }
+
+    // Import Gemini SDK
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const { config } = await import('../config/config.js');
+
+    const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
+    const model = genAI.getGenerativeModel({
+      model: config.gemini.model,
+      generationConfig: {
+        temperature: 0.4, // Lower temperature for more factual responses
+        maxOutputTokens: 1024,
+      }
+    });
+
+    // Build comprehensive bill context
+    const itemsList = billAnalysis.items?.map(item =>
+      `- ${item.name || 'Unknown item'} (Qty: ${item.quantity || 1}) = RM ${item.price || 0} (Total: RM ${item.total_price || item.price || 0})`
+    ).join('\n') || 'No items found';
+
+    const flagsList = billAnalysis.flags?.map(flag =>
+      `⚠️ ${flag.title || 'Issue'}: ${flag.description || ''} (Potential savings: RM ${flag.potential_savings || 0})`
+    ).join('\n') || 'No issues detected';
+
+    const billPrompt = `You are a helpful medical bill advisor for CareLoop. Answer the patient's question about their medical bill clearly and specifically.
+
+BILL DETAILS:
+📋 Pharmacy: ${billAnalysis.pharmacyName || 'Not specified'}
+📅 Date: ${billAnalysis.billDate || 'Not specified'}
+💰 Subtotal: RM ${billAnalysis.subtotal || 0}
+💵 Tax: RM ${billAnalysis.tax || 0}
+💳 Total Amount: RM ${billAnalysis.totalAmount || 0}
+
+ITEMS ON BILL:
+${itemsList}
+
+ISSUES DETECTED:
+${flagsList}
+
+SUMMARY: ${billAnalysis.summary || 'No summary available'}
+
+PATIENT'S QUESTION: "${question}"
+
+INSTRUCTIONS:
+1. Answer the patient's SPECIFIC question directly with concrete numbers and details from the bill
+2. If they ask "how to save", give SPECIFIC actionable advice based on the flags and items
+3. If they ask "why is X high", explain the SPECIFIC reason using the bill data
+4. Use simple, patient-friendly language - avoid jargon
+5. Be helpful and practical - focus on what they can DO
+6. Always reference specific items or charges from their bill
+7. If asking about savings, mention the EXACT potential savings amount (RM ${billAnalysis.potentialTotalSavings || 0})
+
+Examples of GOOD responses:
+- "Looking at your bill, the equipment charges are RM 150 because you used specialized monitoring equipment during your visit. This is standard for procedures requiring continuous monitoring."
+- "You can save approximately RM ${billAnalysis.potentialTotalSavings || 0} by: [specific suggestions from the flags]"
+- "The high charge for [specific item] at RM [amount] appears to be [explain based on flags or context]"
+
+Do NOT give generic responses like "I can't provide financial advice" or "contact billing department" UNLESS the question truly cannot be answered from the bill data.
+
+Answer naturally and conversationally - NO JSON, just plain text response.`;
+
+    const result = await model.generateContent([{ text: billPrompt }]);
+    const responseText = result.response.text();
+
+    console.log('✅ Bill chat response generated');
+
+    res.json({
+      message: responseText,
+      success: true
+    });
+
+  } catch (error) {
+    console.error('❌ Bill chat error:', error);
+
+    res.status(500).json({
+      message: "I'm having trouble analyzing your bill right now. Please try again in a moment.",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
  * POST /api/analyze-bill
  * Analyze medical bill image using Gemini Vision
  */

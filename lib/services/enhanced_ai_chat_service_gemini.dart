@@ -270,6 +270,28 @@ Remember: You're an assistant, not a replacement for real medical care.
 
       debugPrint('✅ Health alert also created in health_alerts collection');
 
+      // ✅ FIX: Create notification in main notifications collection
+      // This is what the doctor's notification UI actually reads
+      await _firestore
+          .collection('notifications')
+          .add({
+        'userId': assignedDoctorId,
+        'title': '🚨 Urgent: Patient Needs Attention',
+        'message': '${patientData['name']} reports: "$message"',
+        'type': 'health_alert',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'priority': 'urgent',
+        'metadata': {
+          'patientId': userId,
+          'patientName': patientData['name'],
+          'urgentMessage': message,
+          'action': 'view_patient',
+        },
+      });
+
+      debugPrint('✅ Notification created in notifications collection for doctor $assignedDoctorId');
+
       debugPrint('✅ FIX 2: Health alert notification created for doctor $assignedDoctorId');
 
       return '🚨 **Urgent Message Sent to Dr. $doctorName**\n\n'
