@@ -2,25 +2,23 @@
 // Centralized configuration for CareLoop Backend
 
 import dotenv from 'dotenv';
+
 if (process.env.NODE_ENV !== 'production') {
   dotenv.config();
 }
+
+// ✅ validate API key OUTSIDE object
+const rawKey = process.env.GEMINI_API_KEY;
+
+if (!rawKey) {
+  throw new Error("Missing GEMINI_API_KEY");
+}
+
 export const config = {
-  // Server
   nodeEnv: process.env.NODE_ENV || 'development',
 
-  // Gemini AI
   gemini: {
-    const rawKey = process.env.GEMINI_API_KEY;
-    if (!rawKey) {
-      throw new Error("Missing GEMINI_API_KEY");
-    }
-    export const config = {
-      gemini: {
-        apiKey: rawKey.trim(),
-        model: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite",
-      }
-    };
+    apiKey: rawKey.trim(),
     model: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite',
     temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
     maxTokens: parseInt(process.env.GEMINI_MAX_TOKENS) || 1024,
@@ -28,7 +26,6 @@ export const config = {
     topP: 0.95
   },
 
-  // Firebase
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
