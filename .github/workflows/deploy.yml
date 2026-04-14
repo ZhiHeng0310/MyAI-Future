@@ -1,29 +1,43 @@
-- name: Checkout code
-  uses: actions/checkout@v4
+name: Deploy to Cloud Run
 
-- name: Authenticate Google Cloud
-  uses: google-github-actions/auth@v2
-  with:
-    credentials_json: ${{ secrets.GCP_SA_KEY }}
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy.yml'
 
-- name: Setup gcloud
-  uses: google-github-actions/setup-gcloud@v2
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-- name: Set project
-  run: gcloud config set project careloop-b2ec8
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-- name: Deploy to Cloud Run
-  run: |
-    gcloud run deploy backend-api \
-      --source backend \
-      --region asia-southeast1 \
-      --allow-unauthenticated \
-      --memory=512Mi \
-      --cpu=1 \
-      --timeout=60 \
-      --concurrency=80 \
-      --min-instances=0 \
-      --max-instances=10 \
-      --set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest \
-      --set-secrets=FIREBASE_SERVICE_ACCOUNT=FIREBASE_SERVICE_ACCOUNT:latest \
-      --set-env-vars=NODE_ENV=production,GEMINI_MODEL=gemini-2.5-flash-lite
+      - name: Authenticate Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set project
+        run: gcloud config set project careloop-b2ec8
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy backend-api \
+            --source backend \
+            --region asia-southeast1 \
+            --allow-unauthenticated \
+            --memory=512Mi \
+            --cpu=1 \
+            --timeout=60 \
+            --concurrency=80 \
+            --min-instances=0 \
+            --max-instances=10 \
+            --set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest \
+            --set-secrets=FIREBASE_SERVICE_ACCOUNT=FIREBASE_SERVICE_ACCOUNT:latest \
+            --set-env-vars=NODE_ENV=production,GEMINI_MODEL=gemini-2.5-flash-lite
