@@ -198,7 +198,16 @@ Be concise, friendly, and helpful. Focus on practical advice and clear explanati
       return response.text ?? 'Sorry, I could not generate a response.';
     } catch (e) {
       debugPrint('❌ Error in chat: $e');
-      return 'Sorry, I encountered an error. Please try again.';
+      // ✅ FIX 1: Return more helpful error messages based on the error type
+      final errorMessage = e.toString().toLowerCase();
+      if (errorMessage.contains('api key') || errorMessage.contains('invalid_api_key')) {
+        return '❌ There\'s an issue with the AI service configuration. Please contact support.';
+      } else if (errorMessage.contains('quota') || errorMessage.contains('rate limit')) {
+        return '⚠️ The AI service is temporarily unavailable due to high usage. Please try again in a few minutes.';
+      } else if (errorMessage.contains('network') || errorMessage.contains('connection')) {
+        return '📡 Network error. Please check your internet connection and try again.';
+      }
+      return '❌ An unexpected error occurred. Please try again or contact support if the problem persists.';
     }
   }
 }

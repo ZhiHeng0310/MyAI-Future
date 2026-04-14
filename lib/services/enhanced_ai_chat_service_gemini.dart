@@ -252,6 +252,27 @@ Remember: You're an assistant, not a replacement for real medical care.
         'isRead': false,
       });
 
+      // ✅ FIX 2: Create notification in the main notifications collection
+      // This ensures the doctor sees the alert in their notification bell/inbox
+      await _firestore
+          .collection('notifications')
+          .add({
+        'userId': assignedDoctorId,
+        'title': '🚨 Urgent: Patient Needs Attention',
+        'message': '${patientData['name']} reports: "$message"',
+        'type': 'health_alert',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'metadata': {
+          'patientId': userId,
+          'patientName': patientData['name'],
+          'urgentMessage': message,
+          'priority': 'urgent',
+        },
+      });
+
+      debugPrint('✅ FIX 2: Health alert notification created for doctor $assignedDoctorId');
+
       return '🚨 **Urgent Message Sent to Dr. $doctorName**\n\n'
           'I\'ve immediately notified Dr. $doctorName about your condition. '
           'They will be alerted and should respond shortly.\n\n'

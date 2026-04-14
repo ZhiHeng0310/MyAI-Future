@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/appointment_model.dart';
 import '../models/patient_model.dart';
 import '../models/doctor_model.dart';
+import '../models/health_alert_model.dart' hide DoctorInboxMessage; // ✅ FIX 3: Added for DoctorInboxMessage
 import '../services/firestore_service.dart';
 import '../services/notification_service.dart';
 import '../services/inbox_service.dart';
@@ -79,6 +80,22 @@ class AppointmentProvider extends ChangeNotifier {
         );
 
         debugPrint('✅ Sent doctor notification for booked appointment');
+
+        // ✅ FIX 3: Also add to doctor_inbox collection so it appears in doctor's inbox tab
+        await _db.createDoctorInboxMessage(
+          DoctorInboxMessage(
+            id: '',
+            doctorId: doctor.id,
+            patientId: patient.id,
+            patientName: patient.name,
+            message: '📅 ${patient.name} booked an appointment for ${appt.dateLabel} at ${appt.timeSlot}.',
+            type: 'appointment_booked',
+            read: false,
+            createdAt: DateTime.now(),
+          ),
+        );
+
+        debugPrint('✅ FIX 3: Added appointment notification to doctor inbox');
 
         // 4. Notify the doctor via push as well when the patient confirms
         await NotificationService.sendPushToUser(

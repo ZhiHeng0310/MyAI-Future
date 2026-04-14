@@ -27,7 +27,7 @@ dependencies:
   # UI & Fonts
   google_fonts: ^8.0.2
   flutter_animate: ^4.5.0
-  fl_chart: ^1.2.0
+  fl_chart: ^0.70.0
 
   # Image picking for AI photo feature
   image_picker: ^1.1.2

@@ -42,7 +42,13 @@ ios/Runner/GeneratedPluginRegistrant.*
 .idea/
 .vscode/
 *.iml
-.agents
-.claude
+.agents/
+.claude/
+.windsurf/
 .dart_tool
 .firebase
+
+android/
+ios/
+linux/
+macos/

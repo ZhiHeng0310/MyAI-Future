@@ -23,10 +23,14 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Test secret access
+        run: |
+          gcloud secrets versions access latest --secret=GEMINI_API_KEY
+
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy backend-api \
-            --image gcr.io/careloop-b2ec8/backend-api \
+            --source backend \
             --region asia-southeast1 \
             --allow-unauthenticated \
             --memory=512Mi \
@@ -35,6 +39,6 @@ jobs:
             --concurrency=80 \
             --min-instances=0 \
             --max-instances=10 \
-            --set-secrets=GEMINI_API_KEY=API_KEY:latest \
+            --set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest \
             --set-secrets=FIREBASE_SERVICE_ACCOUNT=FIREBASE_SERVICE_ACCOUNT:latest \
             --set-env-vars=NODE_ENV=production,GEMINI_MODEL=gemini-2.5-flash-lite
