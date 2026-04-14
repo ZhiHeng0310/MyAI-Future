@@ -252,24 +252,23 @@ Remember: You're an assistant, not a replacement for real medical care.
         'isRead': false,
       });
 
-      // ✅ FIX 2: Create notification in the main notifications collection
-      // This ensures the doctor sees the alert in their notification bell/inbox
+      // ✅ ADDITIONAL: Also create a health_alert entry for doctor's alert screen
       await _firestore
-          .collection('notifications')
+          .collection('health_alerts')
           .add({
-        'userId': assignedDoctorId,
-        'title': '🚨 Urgent: Patient Needs Attention',
-        'message': '${patientData['name']} reports: "$message"',
-        'type': 'health_alert',
+        'patientId': userId,
+        'patientName': patientData['name'],
+        'doctorId': assignedDoctorId,
+        'doctorName': doctorName,
+        'message': message,
         'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-        'metadata': {
-          'patientId': userId,
-          'patientName': patientData['name'],
-          'urgentMessage': message,
-          'priority': 'urgent',
-        },
+        'riskLevel': 'high',
+        'status': 'pending',
+        'symptoms': [],
+        'type': 'patient_unwell',
       });
+
+      debugPrint('✅ Health alert also created in health_alerts collection');
 
       debugPrint('✅ FIX 2: Health alert notification created for doctor $assignedDoctorId');
 

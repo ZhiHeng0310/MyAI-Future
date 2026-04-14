@@ -114,7 +114,7 @@ class GeminiService {
           cleanedText = cleanedText.substring(startIdx, endIdx + 1);
         }
 
-        const jsonResponse = JSON.parse(cleanedText);
+const jsonResponse = JSON.parse(cleanedText);
 
         // ✅ FIX: Ensure patient_list is always an array if present
         if (jsonResponse.patient_list && !Array.isArray(jsonResponse.patient_list)) {
@@ -125,7 +125,6 @@ class GeminiService {
       } catch (parseError) {
         console.warn('⚠️ Gemini returned non-JSON, wrapping as plain text response');
         // Instead of throwing, wrap the plain text in a valid response object
-        // This prevents 500 errors on the doctor/patient chat endpoints
         return {
           message: text.replace(/```json|```/g, '').trim(),
           actions: [],

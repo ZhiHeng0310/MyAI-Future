@@ -1,16 +1,17 @@
 import 'dart:typed_data';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart' hide debugPrint;
 import '../api_service.dart';
 import '../models/doctor_model.dart';
 import '../models/patient_model.dart';
 import '../models/medication_model.dart';
-import '../models/appointment_model.dart';
-import '../models/health_alert_model.dart';
+import '../models/appointment_model.dart' as appointment;
 import '../screens/bill_analyzer/bill_results_screen.dart';
 import '../services/gemini_service.dart';
 import '../services/firestore_service.dart';
 import '../services/notification_service.dart';
 import '../services/inbox_service.dart';
+import '../models/health_alert_model.dart' as alert;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DOCTOR CHAT MESSAGE
@@ -434,50 +435,106 @@ class DoctorChatProvider extends ChangeNotifier {
     if (_doctor == null) return 'No doctor context available.';
 
     try {
-      debugPrint('📊 Loading recent alerts for Dr. ${_doctor!.id}');
+      final now = DateTime.now();
+      final yesterday = now.subtract(const Duration(hours: 24));
 
-      final recent = await _db.getRecentAlertsForDoctor(_doctor!.id);
+      // ✅ FIX: Query without orderBy to avoid index issues, filter in memory
+      final alertsSnapshot = await FirebaseFirestore.instance
+          .collection('health_alerts')
+          .where('doctorId', isEqualTo: _doctor!.id)
+          .get();
 
-      debugPrint('   Found ${recent.length} alert(s)');
+      // ✅ Also check notifications collection
+      final notificationsSnapshot = await FirebaseFirestore.instance
+          .collection('notifications')
+          .where('userId', isEqualTo: _doctor!.id)
+          .where('type', isEqualTo: 'health_alert')
+          .get();
 
-      if (recent.isEmpty) {
-        return '✅ **No recent alerts.**\n\nAll your patients are doing well!';
+      if (alertsSnapshot.docs.isEmpty && notificationsSnapshot.docs.isEmpty) {
+        return '✅ **No Recent Alerts (Last 24 Hours)**\n\n'
+            'Great news! None of your patients have triggered any health alerts in the past 24 hours.';
+      }
+
+      // ✅ Parse health_alerts
+      final healthAlerts = alertsSnapshot.docs
+          .map((doc) {
+        try {
+          return alert.HealthAlert.fromFirestore(doc);
+        } catch (e) {
+          debugPrint('❌ Error parsing health alert ${doc.id}: $e');
+          return null;
+        }
+      })
+          .whereType<appointment.HealthAlert>()
+          .where((alert) => alert.createdAt.isAfter(yesterday))
+          .toList();
+
+      // ✅ Parse notifications
+      final notificationAlerts = notificationsSnapshot.docs
+          .map((doc) {
+        try {
+          final data = doc.data();
+          final timestamp = (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now();
+          if (timestamp.isAfter(yesterday)) {
+            return {
+              'patientName': data['metadata']?['patientName'] ?? 'Unknown',
+              'message': data['message'] ?? '',
+              'timestamp': timestamp,
+              'type': data['type'] ?? 'health_alert',
+            };
+          }
+        } catch (e) {
+          debugPrint('❌ Error parsing notification ${doc.id}: $e');
+        }
+        return null;
+      })
+          .whereType<Map<String, dynamic>>()
+          .toList();
+
+      // Combine and sort
+      final allAlerts = [...healthAlerts];
+      allAlerts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final recentAlerts = allAlerts.take(10).toList();
+
+      if (recentAlerts.isEmpty && notificationAlerts.isEmpty) {
+        return '✅ **No Recent Alerts (Last 24 Hours)**\n\n'
+            'Great news! None of your patients have triggered any health alerts in the past 24 hours.';
       }
 
       final report = StringBuffer();
-      report.writeln('🚨 **Recent Alerts (Last 24 Hours)**\n');
-      report.writeln('Found ${recent.length} alert(s):\n');
+      report.writeln('🚨 **Recent Health Alerts (Last 24 Hours)**\n');
+      report.writeln('Found ${recentAlerts.length + notificationAlerts.length} alert(s):\n');
 
-      // ✅ FIX: Use indexed for loop with bounds checking
-      for (int i = 0; i < recent.length; i++) {
-        try {
-          final alert = recent[i];
-          final timeAgo = _getTimeAgo(alert.createdAt);
-
-          report.writeln('━━━━━━━━━━━━━━━━━━━━');
-          report.writeln('👤 **${alert.patientName ?? "Unknown Patient"}**');
-          report.writeln('⏰ $timeAgo');
-          report.writeln('⚠️ Risk: ${(alert.riskLevel ?? "low").toUpperCase()}');
-          report.writeln('💬 Message: ${alert.message ?? "No message"}');
-          report.writeln('📊 Status: ${alert.status ?? "pending"}');
-          if (alert.doctorResponse != null && alert.doctorResponse!.isNotEmpty) {
-            report.writeln('💬 Your response: ${alert.doctorResponse}');
-          }
-          report.writeln('');
-        } catch (e) {
-          debugPrint('❌ Error processing alert at index $i: $e');
-          // Skip this alert and continue
-          continue;
+      // Display health_alerts
+      for (final alert in recentAlerts) {
+        final timeAgo = _getTimeAgo(alert.createdAt);
+        report.writeln('---');
+        report.writeln('👤 **${alert.patientName}**');
+        report.writeln('⏰ $timeAgo');
+        report.writeln('⚠️ Risk: ${alert.riskLevel.toUpperCase()}');
+        report.writeln('💬 Message: ${alert.message}');
+        report.writeln('📊 Status: ${alert.status}');
+        if (alert.doctorResponse != null) {
+          report.writeln('💬 Your response: ${alert.doctorResponse}');
         }
+        report.writeln('');
+      }
+
+      // Display notification alerts
+      for (final alert in notificationAlerts) {
+        final timeAgo = _getTimeAgo(alert['timestamp'] as DateTime);
+        report.writeln('---');
+        report.writeln('👤 **${alert['patientName']}**');
+        report.writeln('⏰ $timeAgo');
+        report.writeln('💬 ${alert['message']}');
+        report.writeln('');
       }
 
       return report.toString();
     } catch (e) {
       debugPrint('❌ Error loading alerts: $e');
-      debugPrint('Stack trace: ${StackTrace.current}');
-      return '❌ **Unable to load recent alerts**\n\n'
-          'Error: ${e.toString()}\n\n'
-          'Please try again or contact support if the problem persists.';
+      return '❌ Unable to load recent alerts. Error: ${e.toString()}';
     }
   }
 
@@ -663,6 +720,7 @@ class DoctorChatProvider extends ChangeNotifier {
       debugPrint('❌ Error sending message to patient: $e');
     }
   }
+
 
   // ══════════════════════════════════════════════════════════════════════════
   // HELPER: Find patient by hint or query

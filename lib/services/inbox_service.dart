@@ -57,6 +57,40 @@ class InboxService extends ChangeNotifier {
   }
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
+  Future<void> markNotificationAsRead(String notificationId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('notifications')
+          .doc(notificationId)
+          .update({
+        'isRead': true,
+        'readAt': FieldValue.serverTimestamp(),
+      });
+      debugPrint('✅ Notification marked as read: $notificationId');
+    } catch (e) {
+      debugPrint('⚠️ Error marking notification as read: $e');
+      // Try alternative approach if BloomFilter error
+      if (e.toString().contains('BloomFilter')) {
+        try {
+          // Force a fresh read then update
+          final doc = await FirebaseFirestore.instance
+              .collection('notifications')
+              .doc(notificationId)
+              .get(const GetOptions(source: Source.server)); // Force server read
+
+          if (doc.exists) {
+            await doc.reference.update({
+              'isRead': true,
+              'readAt': FieldValue.serverTimestamp(),
+            });
+            debugPrint('✅ Notification marked as read (retry): $notificationId');
+          }
+        } catch (retryError) {
+          debugPrint('❌ Failed to mark notification as read even on retry: $retryError');
+        }
+      }
+    }
+  }
 
   Future<void> markAsRead(String notificationId) async {
     try {

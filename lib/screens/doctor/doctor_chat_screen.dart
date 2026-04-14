@@ -331,8 +331,8 @@ class _MessageBubble extends StatelessWidget {
                     ],
                   ),
                 ),
-                // Show action badge if AI performed an action
-                if (!isDoc && msg.patientOptions != null && msg.patientOptions!.isNotEmpty)
+                // ✅ ADD THIS: Display patient selection buttons if available
+                if (msg.patientOptions != null && msg.patientOptions!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
                     child: Column(
@@ -355,7 +355,7 @@ class _MessageBubble extends StatelessWidget {
                               avatar: CircleAvatar(
                                 backgroundColor: Theme.of(context).colorScheme.primary,
                                 child: Text(
-                                  patient.name[0].toUpperCase(),
+                                  patient.name.isNotEmpty ? patient.name[0].toUpperCase() : '?',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 12,
@@ -365,8 +365,8 @@ class _MessageBubble extends StatelessWidget {
                               ),
                               label: Text(patient.name),
                               onPressed: () {
-                                final provider =
-                                Provider.of<DoctorChatProvider>(context, listen: false);
+                                // Handle patient selection based on the action
+                                final provider = Provider.of<DoctorChatProvider>(context, listen: false);
 
                                 if (msg.action == 'check_patient_status') {
                                   provider.sendMessage('Check status for ${patient.name}');
@@ -376,12 +376,15 @@ class _MessageBubble extends StatelessWidget {
                                   provider.sendMessage('Show alerts for ${patient.name}');
                                 } else if (msg.action == 'review_my_patients') {
                                   provider.sendMessage('Tell me about ${patient.name}');
+                                } else if (msg.action == 'send_patient_message') {
+                                  // You can add a dialog here to type custom message
+                                  provider.sendMessage('Send message to ${patient.name}');
                                 }
                               },
                               backgroundColor: Colors.white,
                               side: BorderSide(
                                 color: Theme.of(context).colorScheme.primary,
-                                width: 1,
+                                width: 1.5,
                               ),
                             );
                           }).toList(),

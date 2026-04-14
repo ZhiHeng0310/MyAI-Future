@@ -27,6 +27,26 @@ class HealthAlert {
     required this.createdAt,
   });
 
+  factory HealthAlert.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+
+    return HealthAlert(
+      id: doc.id,
+      patientId: data['patientId'] ?? '',
+      doctorId: data['doctorId'] ?? '',
+      patientName: data['patientName'] ?? 'Unknown',
+      message: data['message'] ?? '',
+      riskLevel: data['riskLevel'] ?? 'low',
+      status: data['status'] ?? 'new',
+
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate()
+          ?? (data['timestamp'] as Timestamp?)?.toDate()
+          ?? DateTime.now(),
+
+      doctorResponse: data['doctorResponse'],
+    );
+  }
+
   factory HealthAlert.fromMap(Map<String, dynamic> m, String id) => HealthAlert(
     id: id,
     patientId: m['patientId'] ?? '',

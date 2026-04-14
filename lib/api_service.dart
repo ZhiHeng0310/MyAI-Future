@@ -49,7 +49,10 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        print('✅ Success: ${result['message']?.substring(0, 50) ?? 'no message'}...');
+        // ✅ FIX: Safe substring that handles short messages
+        final msg = result['message'] ?? 'no message';
+        final preview = msg.length > 50 ? msg.substring(0, 50) + '...' : msg;
+        print('✅ Success: $preview');
         return result;
       } else {
         print('❌ Error response: ${response.body}');

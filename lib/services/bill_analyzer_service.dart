@@ -10,6 +10,7 @@ import 'dart:convert';
 
 class BillAnalyzerService {
   static final BillAnalyzerService instance = BillAnalyzerService._();
+
   BillAnalyzerService._();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -39,7 +40,8 @@ class BillAnalyzerService {
 
       // Validate response has items
       if ((response['items'] as List?)?.isEmpty ?? true) {
-        throw Exception('No bill items detected. Please ensure the image is clear and shows a medical bill.');
+        throw Exception(
+            'No bill items detected. Please ensure the image is clear and shows a medical bill.');
       }
 
       // Create analysis object
@@ -69,7 +71,10 @@ class BillAnalyzerService {
     required Map<String, dynamic> analysisData,
   }) {
     return BillAnalysis(
-      id: _firestore.collection('bill_analyses').doc().id,
+      id: _firestore
+          .collection('bill_analyses')
+          .doc()
+          .id,
       userId: userId,
       imageUrl: imageUrl,
       analyzedAt: DateTime.now(),
@@ -83,8 +88,10 @@ class BillAnalyzerService {
       tax: (analysisData['tax'] as num?)?.toDouble(),
       totalAmount: (analysisData['total_amount'] as num?)?.toDouble() ?? 0.0,
       summary: analysisData['summary'] as String? ?? 'Analysis completed',
-      suggestions: (analysisData['suggestions'] as List<dynamic>?)?.cast<String>() ?? [],
-      potentialTotalSavings: (analysisData['potential_total_savings'] as num?)?.toDouble(),
+      suggestions: (analysisData['suggestions'] as List<dynamic>?)?.cast<
+          String>() ?? [],
+      potentialTotalSavings: (analysisData['potential_total_savings'] as num?)
+          ?.toDouble(),
       pharmacyName: analysisData['pharmacy_name'] as String?,
       billDate: analysisData['bill_date'] as String?,
       rawData: analysisData,
@@ -118,7 +125,8 @@ class BillAnalyzerService {
         .where('user_id', isEqualTo: userId)
         .orderBy('analyzed_at', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
+        .map((snapshot) =>
+        snapshot.docs
             .map((doc) => BillAnalysis.fromFirestore(doc))
             .toList());
   }
@@ -133,7 +141,7 @@ class BillAnalyzerService {
           .collection('bill_analyses')
           .doc(analysisId)
           .get();
-      
+
       if (!doc.exists) return null;
       return BillAnalysis.fromFirestore(doc);
     } catch (e) {
@@ -168,6 +176,12 @@ class BillAnalyzerService {
     required String question,
   }) async {
     try {
+      // ✅ FIX: Check if API key is valid before calling
+      if (AppConfig.geminiApiKey.isEmpty ||
+          AppConfig.geminiApiKey == 'your-gemini-api-key-here') {
+        return '❌ AI service is not configured. Please add your Gemini API key to enable bill chat.';
+      }
+
       final model = GenerativeModel(
         model: AppConfig.geminiModel,
         apiKey: AppConfig.geminiApiKey,
@@ -184,7 +198,9 @@ Bill Analysis Context:
 - Pharmacy: ${analysis.pharmacyName ?? 'Unknown'}
 - Date: ${analysis.billDate ?? 'Unknown'}
 - Total: RM ${analysis.totalAmount.toStringAsFixed(2)}
-- Items: ${analysis.items.map((i) => '${i.name} (${i.quantity}x RM${i.price})').join(', ')}
+- Items: ${analysis.items
+          .map((i) => '${i.name} (${i.quantity}x RM${i.price})')
+          .join(', ')}
 - Flags: ${analysis.flags.map((f) => '${f.title}: ${f.description}').join('; ')}
 - Summary: ${analysis.summary}
 
@@ -198,16 +214,28 @@ Be concise, friendly, and helpful. Focus on practical advice and clear explanati
       return response.text ?? 'Sorry, I could not generate a response.';
     } catch (e) {
       debugPrint('❌ Error in chat: $e');
-      // ✅ FIX 1: Return more helpful error messages based on the error type
       final errorMessage = e.toString().toLowerCase();
-      if (errorMessage.contains('api key') || errorMessage.contains('invalid_api_key')) {
-        return '❌ There\'s an issue with the AI service configuration. Please contact support.';
-      } else if (errorMessage.contains('quota') || errorMessage.contains('rate limit')) {
+
+      // ✅ IMPROVED: More specific error handling
+      if (errorMessage.contains('unregistered callers') ||
+          errorMessage.contains('api consumer identity')) {
+        return '❌ AI service authentication failed. Please ensure your Gemini API key is properly configured in the app settings.';
+      } else if (errorMessage.contains('api key') ||
+          errorMessage.contains('invalid_api_key') ||
+          errorMessage.contains('invalid key')) {
+        return '❌ Invalid AI service API key. Please check your Gemini API key configuration.';
+      } else if (errorMessage.contains('quota') ||
+          errorMessage.contains('rate limit')) {
         return '⚠️ The AI service is temporarily unavailable due to high usage. Please try again in a few minutes.';
-      } else if (errorMessage.contains('network') || errorMessage.contains('connection')) {
+      } else if (errorMessage.contains('network') ||
+          errorMessage.contains('connection')) {
         return '📡 Network error. Please check your internet connection and try again.';
       }
-      return '❌ An unexpected error occurred. Please try again or contact support if the problem persists.';
+      return '❌ An unexpected error occurred: ${e.toString().substring(0, e
+          .toString()
+          .length < 100 ? e
+          .toString()
+          .length : 100)}';
     }
   }
 }
