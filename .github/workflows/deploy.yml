@@ -30,7 +30,7 @@ jobs:
         working-directory: backend
         run: |
           gcloud run deploy backend-api \
-            --source backend \
+            --source . \
             --region asia-southeast1 \
             --allow-unauthenticated \
             --memory=512Mi \
