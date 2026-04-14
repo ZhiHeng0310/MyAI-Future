@@ -41,4 +41,4 @@ jobs:
             --max-instances=10 \
             --set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest \
             --set-secrets=FIREBASE_SERVICE_ACCOUNT=FIREBASE_SERVICE_ACCOUNT:latest \
-            --set-env-vars=NODE_ENV=production,GEMINI_MODEL=gemma-3-27B
+            --set-env-vars=NODE_ENV=production,GEMINI_MODEL=gemma-3-27b-it
