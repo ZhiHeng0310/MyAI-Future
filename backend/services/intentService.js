@@ -251,6 +251,6 @@ export default {
   ChatIntent,
   analyzeIntent,
   extractSymptoms,
-  assessRiskLevel，
+  assessRiskLevel,
   isBillScanIntent: undefined
 };
