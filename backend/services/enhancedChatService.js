@@ -209,7 +209,8 @@ Your health is important. Don't hesitate to seek immediate help if needed.`,
         patientName: patient.name || 'Patient',
         doctorId: assignedDoctorId,
         doctorName: doctorName,
-        message: message
+        message: message,
+        riskLevel: risk
       });
 
       // Update patient risk level
@@ -502,7 +503,8 @@ Be concise and helpful.`;
               patientName: patient.name || 'Patient',
               doctorId: patient.assignedDoctorId,
               doctorName: 'Doctor',
-              message: message
+              message: message,
+              riskLevel: response.risk || risk
             });
             console.log('🚨 Urgent notification sent to doctor for patient feeling unwell');
           }
