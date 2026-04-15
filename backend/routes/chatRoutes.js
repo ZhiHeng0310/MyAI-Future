@@ -510,7 +510,7 @@ router.post('/test', async (req, res) => {
   }
 });
 
-router.post('/api/send-notification', async (req, res) => {
+router.post('/send-notification', async (req, res) => {
   const { userId, title, message, type, metadata } = req.body;
 
   // Create notification in Firestore

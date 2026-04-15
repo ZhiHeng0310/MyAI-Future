@@ -7,6 +7,9 @@ import 'doctor_queue_screen.dart';
 import 'doctor_alerts_screen.dart';
 import 'doctor_chat_screen.dart';
 import 'doctor_patients_screen.dart';
+import 'doctor_ai_screen.dart';
+import 'ai_body_check_screen.dart';
+import 'ai_report_summarizer_screen.dart';
 
 class DoctorHomeScreen extends StatefulWidget {
   const DoctorHomeScreen({super.key});
@@ -51,7 +54,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     NavigationDestination(
       icon:         Icon(Icons.smart_toy_outlined),
       selectedIcon: Icon(Icons.smart_toy_rounded),
-      label:        'AI',
+      label:        'AI Care',
+    ),
+    NavigationDestination(
+      icon: Icon(Icons.smart_toy_outlined),
+      selectedIcon: Icon(Icons.smart_toy_rounded),
+      label: 'AI Tools',
     ),
   ];
 
@@ -65,6 +73,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
       const DoctorPatientsScreen(),
       const DoctorAlertsScreen(),
       const DoctorChatScreen(),
+      const DoctorAIScreen(),
     ];
 
     return Scaffold(
