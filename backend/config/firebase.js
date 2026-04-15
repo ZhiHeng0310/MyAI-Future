@@ -1,451 +1,84 @@
-// services/firestoreService.js
-// Firestore service for all database operations
+import fs from "fs";
+import admin from "firebase-admin";
+import { config } from "./config.js";
 
-import { getFirestore, getFieldValue } from '../config/firebase.js';
+let firebaseInitialized = false;
 
-class FirestoreService {
-  constructor() {
-    this.db = null;
-    this.FieldValue = null;
-  }
+export function initializeFirebase() {
+  if (firebaseInitialized) return admin;
 
-  /**
-   * Initialize Firestore
-   */
-  initialize() {
-    if (!this.db) {
-      this.db = getFirestore();
-      this.FieldValue = getFieldValue();
-    }
-  }
+  try {
+    console.log("🔥 Initializing Firebase...");
 
-  /**
-   * Get patient data
-   * @param {string} userId - Patient ID
-   * @returns {Promise<Object|null>}
-   */
-  async getPatient(userId) {
-    this.initialize();
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      const serviceAccount = JSON.parse(
+        process.env.FIREBASE_SERVICE_ACCOUNT
+      );
 
-    try {
-      const patientDoc = await this.db.collection('patients').doc(userId).get();
+      serviceAccount.private_key =
+        serviceAccount.private_key.replace(/\\n/g, '\n');
 
-      if (!patientDoc.exists) {
-        return null;
-      }
-
-      return {
-        id: patientDoc.id,
-        ...patientDoc.data()
-      };
-    } catch (error) {
-      console.error('Error getting patient:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get doctor data
-   * @param {string} doctorId - Doctor ID
-   * @returns {Promise<Object|null>}
-   */
-  async getDoctor(doctorId) {
-    this.initialize();
-
-    try {
-      const doctorDoc = await this.db.collection('doctors').doc(doctorId).get();
-
-      if (!doctorDoc.exists) {
-        return null;
-      }
-
-      return {
-        id: doctorDoc.id,
-        ...doctorDoc.data()
-      };
-    } catch (error) {
-      console.error('Error getting doctor:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get patient medications
-   * @param {string} userId - Patient ID
-   * @returns {Promise<Array>}
-   */
-  async getPatientMedications(userId) {
-    this.initialize();
-
-    try {
-      const medicationsSnapshot = await this.db
-        .collection('patients')
-        .doc(userId)
-        .collection('medications')
-        .get();
-
-      const medications = [];
-      medicationsSnapshot.forEach(doc => {
-        medications.push({
-          id: doc.id,
-          ...doc.data()
-        });
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
       });
 
-      return medications;
-    } catch (error) {
-      console.error('Error getting medications:', error);
-      throw error;
+      console.log("✅ Firebase initialized with FIREBASE_SERVICE_ACCOUNT secret");
     }
-  }
 
-  /**
-   * Send urgent message to doctor
-   * @param {Object} data - Message data
-   * @returns {Promise<string>} - Message ID
-   */
-  async sendUrgentMessage(data) {
-    this.initialize();
+    else if (config.firebase.credentialsPath) {
+      const serviceAccount = JSON.parse(
+        fs.readFileSync(config.firebase.credentialsPath, "utf8")
+      );
 
-    try {
-      const { patientId, patientName, doctorId, doctorName, message, riskLevel } = data;
-      const finalRiskLevel = riskLevel || 'medium'; // Default to medium if not specified
-
-      // Create urgent message
-      const urgentMessageRef = await this.db.collection('urgent_messages').add({
-        patientId,
-        patientName,
-        doctorId,
-        doctorName,
-        message,
-        timestamp: this.FieldValue.serverTimestamp(),
-        status: 'pending',
-        priority: 'urgent'
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
       });
 
-      // ⚠️ CRITICAL: Create health alert - this is what the doctor's UI actually checks!
-      await this.db.collection('health_alerts').add({
-        patientId,
-        patientName,
-        doctorId,
-        message,
-        riskLevel: finalRiskLevel,
-        status: 'pending',
-        createdAt: this.FieldValue.serverTimestamp(),
-        doctorResponse: null
+      console.log("✅ Firebase initialized with service account file");
+    }
+
+    else if (
+      config.firebase.projectId &&
+      config.firebase.privateKey &&
+      config.firebase.clientEmail
+    ) {
+      admin.initializeApp({
+        credential: admin.credential.cert({
+          projectId: config.firebase.projectId,
+          clientEmail: config.firebase.clientEmail,
+          privateKey: config.firebase.privateKey.replace(/\\n/g, '\n'),
+        }),
       });
 
-      // Notify doctor in inbox
-      await this.db
-        .collection('doctor_inbox')
-        .doc(doctorId)
-        .collection('messages')
-        .add({
-          title: '🚨 Urgent: Patient Needs Attention',
-          message: `${patientName} reports: "${message}"`,
-          patientId,
-          patientName,
-          timestamp: this.FieldValue.serverTimestamp(),
-          isRead: false
-        });
-
-      // Create a notification (for notifications collection)
-      await this.db.collection('notifications').add({
-          userId: doctorId,
-          title: '🚨 Urgent: Patient Needs Attention',
-          message: `${patientName} reports: "${message}"`,
-          type: 'doctor',
-          isRead: false,
-          timestamp: this.FieldValue.serverTimestamp(),
-          metadata: {
-            patientId,
-            patientName,
-            urgentMessageId: urgentMessageRef.id,
-            action: 'urgent_patient_message'
-          }
-        });
-
-      console.log('✅ Health alert, inbox message, and notification created for doctor');
-      return urgentMessageRef.id;
-    } catch (error) {
-      console.error('Error sending urgent message:', error);
-      throw error;
+      console.log("✅ Firebase initialized with env vars");
     }
-  }
 
-  /**
-   * Create appointment request
-   * @param {Object} data - Appointment data
-   * @returns {Promise<string>} - Appointment ID
-   */
-  async createAppointmentRequest(data) {
-    this.initialize();
-
-    try {
-      const appointmentRef = await this.db.collection('appointment_requests').add({
-        ...data,
-        timestamp: this.FieldValue.serverTimestamp(),
-        status: 'pending'
-      });
-
-      return appointmentRef.id;
-    } catch (error) {
-      console.error('Error creating appointment:', error);
-      throw error;
+    else {
+      admin.initializeApp();
+      console.log("✅ Firebase initialized with default credentials");
     }
+
+    firebaseInitialized = true;
+    return admin;
+
+  } catch (error) {
+    console.error("❌ Firebase initialization error:", error);
+    throw error;
   }
-
-  /**
-   * Log chat interaction
-   * @param {Object} data - Chat log data
-   * @returns {Promise<string>} - Log ID
-   */
-  async logChatInteraction(data) {
-    this.initialize();
-
-    try {
-      const { userId, role, message, response, intent, risk } = data;
-
-      const logRef = await this.db.collection('chat_logs').add({
-        userId,
-        role,
-        message,
-        response,
-        intent,
-        risk,
-        timestamp: this.FieldValue.serverTimestamp()
-      });
-
-      return logRef.id;
-    } catch (error) {
-      console.error('Error logging chat:', error);
-      // Don't throw - logging failure shouldn't break the app
-      return null;
-    }
-  }
-
-  /**
-   * Get patient summaries for doctor
-   * @param {string} doctorId - Doctor ID
-   * @returns {Promise<Array>}
-   */
-  async getPatientSummariesForDoctor(doctorId) {
-    this.initialize();
-
-    try {
-      const patientsSnapshot = await this.db
-        .collection('patients')
-        .where('assignedDoctorId', '==', doctorId)
-        .get();
-
-      const summaries = [];
-      patientsSnapshot.forEach(doc => {
-        const data = doc.data();
-        summaries.push({
-          id: doc.id,
-          name: data.name,
-          diagnosis: data.diagnosis,
-          lastCheckIn: data.lastCheckIn,
-          riskLevel: data.riskLevel || 'low'
-        });
-      });
-
-      return summaries;
-    } catch (error) {
-      console.error('Error getting patient summaries:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Update patient risk level
-   * @param {string} userId - Patient ID
-   * @param {string} risk - Risk level
-   * @returns {Promise<void>}
-   */
-  async updatePatientRiskLevel(userId, risk) {
-    this.initialize();
-
-    try {
-      await this.db.collection('patients').doc(userId).update({
-        riskLevel: risk,
-        lastRiskUpdate: this.FieldValue.serverTimestamp()
-      });
-    } catch (error) {
-      console.error('Error updating risk level:', error);
-      // Don't throw - this is a non-critical update
-    }
-  }
-
-  /**
-   * Get all doctors (used when patient has no assigned doctor)
-   * @returns {Promise<Array>}
-   */
-  async getAllDoctors() {
-    this.initialize();
-
-    try {
-      const snapshot = await this.db.collection('doctors').limit(20).get();
-      const doctors = [];
-      snapshot.forEach(doc => {
-        doctors.push({ id: doc.id, ...doc.data() });
-      });
-      return doctors;
-    } catch (error) {
-      console.error('Error getting all doctors:', error);
-      return [];
-    }
-  }
-
-   /**
-   * Get all patients assigned to a doctor (via medications)
-   * @param {string} doctorId - Doctor's ID
-   * @returns {Promise<Array>} - List of patient objects
-   */
-  async getDoctorPatients(doctorId) {
-    try {
-      if (!this.db) {
-        await this.initialize();
-      }
-
-      console.log(`📋 Fetching patients for doctor: ${doctorId}`);
-
-      // Get all medications prescribed by this doctor
-      const medicationsSnapshot = await this.db
-        .collection('medications')
-        .where('doctorId', '==', doctorId)
-        .get();
-
-      console.log(`   Found ${medicationsSnapshot.size} medications`);
-
-      // Extract unique patient IDs
-      const patientIds = new Set();
-      medicationsSnapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.patientId) {
-          patientIds.add(data.patientId);
-        }
-      });
-
-      console.log(`   Found ${patientIds.size} unique patients`);
-
-      // Fetch patient details
-      const patients = [];
-      for (const patientId of patientIds) {
-        try {
-          const patientDoc = await this.db
-            .collection('patients')
-            .doc(patientId)
-            .get();
-
-          if (patientDoc.exists) {
-            patients.push({
-              id: patientDoc.id,
-              ...patientDoc.data()
-            });
-          }
-        } catch (err) {
-          console.warn(`   Could not fetch patient ${patientId}:`, err.message);
-        }
-      }
-
-      console.log(`✅ Loaded ${patients.length} patients for doctor`);
-      return patients;
-    } catch (error) {
-      console.error('❌ Error getting doctor patients:', error);
-      return [];
-    }
-  }
-  /**
-   * Get top-level medications collection for a patient
-   * Also checks the subcollection path as a fallback
-   * @param {string} userId - Patient ID
-   * @returns {Promise<Array>}
-   */
-  async getPatientMedicationsWithFallback(userId) {
-    this.initialize();
-
-    try {
-      // Primary: subcollection under patient document
-      const subSnap = await this.db
-        .collection('patients').doc(userId)
-        .collection('medications').get();
-
-      if (!subSnap.empty) {
-        const meds = [];
-        subSnap.forEach(doc => meds.push({ id: doc.id, ...doc.data() }));
-        return meds;
-      }
-
-      // Fallback: top-level medications collection filtered by patientId
-      const topSnap = await this.db
-        .collection('medications')
-        .where('patientId', '==', userId)
-        .get();
-
-      const meds = [];
-      topSnap.forEach(doc => meds.push({ id: doc.id, ...doc.data() }));
-      return meds;
-    } catch (error) {
-      console.error('Error getting medications (with fallback):', error);
-      return [];
-    }
-  }
-
-  /**
-     * Get all patients assigned to a doctor (via prescriptions)
-     * @param {string} doctorId - Doctor's ID
-     * @returns {Promise<Array>} - List of patient objects
-     */
-   async getDoctorPatients(doctorId) {
-     try {
-       if (!this.db) {
-         await this.initialize();
-       }
-
-       // Get all medications prescribed by this doctor
-       const medicationsSnapshot = await this.db
-         .collection('medications')
-         .where('doctorId', '==', doctorId)
-         .get();
-
-       // Extract unique patient IDs
-       const patientIds = new Set();
-       medicationsSnapshot.forEach(doc => {
-         const data = doc.data();
-         if (data.patientId) {
-           patientIds.add(data.patientId);
-         }
-       });
-
-       // Fetch patient details
-       const patients = [];
-       for (const patientId of patientIds) {
-         try {
-           const patientDoc = await this.db
-             .collection('patients')
-             .doc(patientId)
-             .get();
-
-           if (patientDoc.exists) {
-             patients.push({
-               id: patientDoc.id,
-               ...patientDoc.data()
-             });
-           }
-         } catch (err) {
-           console.warn(`Could not fetch patient ${patientId}:`, err.message);
-         }
-       }
-
-       return patients;
-     } catch (error) {
-       console.error('Error getting doctor patients:', error);
-       return [];
-     }
-   }
 }
 
-// Export singleton instance
-export const firestoreService = new FirestoreService();
-export default firestoreService;
+export function getFirestore() {
+  if (!firebaseInitialized) initializeFirebase();
+  return admin.firestore();
+}
+
+export function getFieldValue() {
+  if (!firebaseInitialized) initializeFirebase();
+  return admin.firestore.FieldValue;
+}
+
+export default {
+  initializeFirebase,
+  getFirestore,
+  getFieldValue,
+};

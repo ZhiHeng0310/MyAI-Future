@@ -108,7 +108,8 @@ class FirestoreService {
     this.initialize();
 
     try {
-      const { patientId, patientName, doctorId, doctorName, message } = data;
+      const { patientId, patientName, doctorId, doctorName, message, riskLevel } = data;
+      const finalRiskLevel = riskLevel || 'medium'; // Default to medium if not specified
 
       // Create urgent message
       const urgentMessageRef = await this.db.collection('urgent_messages').add({
@@ -120,6 +121,18 @@ class FirestoreService {
         timestamp: this.FieldValue.serverTimestamp(),
         status: 'pending',
         priority: 'urgent'
+      });
+
+      // ⚠️ CRITICAL: Create health alert - this is what the doctor's UI actually checks!
+      await this.db.collection('health_alerts').add({
+        patientId,
+        patientName,
+        doctorId,
+        message,
+        riskLevel: finalRiskLevel,
+        status: 'pending',
+        createdAt: this.FieldValue.serverTimestamp(),
+        doctorResponse: null
       });
 
       // Notify doctor in inbox
@@ -136,7 +149,7 @@ class FirestoreService {
           isRead: false
         });
 
-      //Create a notification
+      // Create a notification (for notifications collection)
       await this.db.collection('notifications').add({
           userId: doctorId,
           title: '🚨 Urgent: Patient Needs Attention',
@@ -152,6 +165,7 @@ class FirestoreService {
           }
         });
 
+      console.log('✅ Health alert, inbox message, and notification created for doctor');
       return urgentMessageRef.id;
     } catch (error) {
       console.error('Error sending urgent message:', error);
@@ -377,59 +391,6 @@ class FirestoreService {
       return [];
     }
   }
-
-  /**
-     * Get all patients assigned to a doctor (via prescriptions)
-     * @param {string} doctorId - Doctor's ID
-     * @returns {Promise<Array>} - List of patient objects
-     */
-   async getDoctorPatients(doctorId) {
-     try {
-       if (!this.db) {
-         await this.initialize();
-       }
-
-       // Get all medications prescribed by this doctor
-       const medicationsSnapshot = await this.db
-         .collection('medications')
-         .where('doctorId', '==', doctorId)
-         .get();
-
-       // Extract unique patient IDs
-       const patientIds = new Set();
-       medicationsSnapshot.forEach(doc => {
-         const data = doc.data();
-         if (data.patientId) {
-           patientIds.add(data.patientId);
-         }
-       });
-
-       // Fetch patient details
-       const patients = [];
-       for (const patientId of patientIds) {
-         try {
-           const patientDoc = await this.db
-             .collection('patients')
-             .doc(patientId)
-             .get();
-
-           if (patientDoc.exists) {
-             patients.push({
-               id: patientDoc.id,
-               ...patientDoc.data()
-             });
-           }
-         } catch (err) {
-           console.warn(`Could not fetch patient ${patientId}:`, err.message);
-         }
-       }
-
-       return patients;
-     } catch (error) {
-       console.error('Error getting doctor patients:', error);
-       return [];
-     }
-   }
 }
 
 // Export singleton instance
