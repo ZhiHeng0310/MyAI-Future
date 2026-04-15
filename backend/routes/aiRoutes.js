@@ -3,7 +3,9 @@
 
 import express from 'express';
 import { aiService } from '../services/aiService.js';
-import { db } from '../config/firebase.js';
+import { getFirestore } from '../config/firebase.js';
+
+const db = getFirestore();
 
 const router = express.Router();
 

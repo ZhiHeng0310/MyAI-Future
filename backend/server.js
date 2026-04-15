@@ -59,9 +59,6 @@ app.use('/api/', (req, res, next) => {
   if (req.method === 'OPTIONS') return next(); // 🔥 skip preflight
   return limiter(req, res, next);
 });
-// Mount API routes
-app.use('/api', chatRoutes);
-app.use('/api/ai', aiRoutes);
 
 // Enhanced request logging
 app.use((req, res, next) => {
@@ -77,12 +74,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// Request logging middleware
-app.use((req, res, next) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${req.method} ${req.path}`);
-  next();
-});
+// Mount API routes
+app.use('/api', chatRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -137,15 +131,12 @@ async function startServer() {
   console.log('🚀 Starting CareLoop Backend...');
   console.log(`📍 Port: ${port}`);
 
-  let server;
-
   try {
-    // 1. START EXPRESS IMMEDIATELY (CRITICAL)
-    server = app.listen(port, '0.0.0.0', () => {
+    app.listen(port, '0.0.0.0', () => {
       console.log(`✅ Server running on port ${port}`);
     });
 
-    // 2. SAFE INIT WRAPPER (NO CRASH ALLOWED)
+    // SAFE INIT WRAPPER (NO CRASH ALLOWED)
     (async () => {
       try {
         console.log('🔥 Initializing Firebase...');
@@ -168,25 +159,6 @@ async function startServer() {
     console.error('💥 FATAL SERVER CRASH:', err);
     process.exit(1);
   }
-
-  return server;
-}
-
-// Handle graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received, shutting down gracefully...');
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  console.log('🛑 SIGINT received, shutting down gracefully...');
-  process.exit(0);
-});
-
-// Start the server
-startServer();
-
-  return server;
 }
 
 // Handle graceful shutdown
