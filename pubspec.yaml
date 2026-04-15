@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter_dotenv: ^6.0.0
   google_generative_ai: ^0.4.7
+  pdf: ^3.10.7
+  printing: ^5.12.0
 
   flutter:
     sdk: flutter

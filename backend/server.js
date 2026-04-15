@@ -15,6 +15,7 @@ import { geminiService } from './services/geminiService.js';
 
 console.log("Importing routes...");
 import chatRoutes from './routes/chatRoutes.js';
+import aiRoutes from './routes/aiRoutes.js';
 
 console.log("Importing rate limit...");
 import rateLimit from 'express-rate-limit';
@@ -60,6 +61,7 @@ app.use('/api/', (req, res, next) => {
 });
 // Mount API routes
 app.use('/api', chatRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Enhanced request logging
 app.use((req, res, next) => {
@@ -92,7 +94,10 @@ app.get('/', (req, res) => {
     endpoints: {
       chat: '/api/chat',
       health: '/api/health',
-      test: '/api/test'
+      test: '/api/test',
+      ai_generate_report: '/api/ai/generate-report',
+      ai_summarize_report: '/api/ai/summarize-report',
+      ai_send_summary: '/api/ai/send-summary-to-patient'
     }
   });
 });
@@ -163,6 +168,23 @@ async function startServer() {
     console.error('💥 FATAL SERVER CRASH:', err);
     process.exit(1);
   }
+
+  return server;
+}
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('🛑 SIGINT received, shutting down gracefully...');
+  process.exit(0);
+});
+
+// Start the server
+startServer();
 
   return server;
 }
