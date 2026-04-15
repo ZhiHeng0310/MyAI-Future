@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class PatientModel {
   final String       id;
   final String       name;
@@ -63,4 +65,13 @@ class PatientModel {
     allergies:        allergies,
     assignedDoctorId: assignedDoctorId ?? this.assignedDoctorId,
   );
+
+  factory PatientModel.fromFirestore(
+      DocumentSnapshot<Map<String, dynamic>> doc,
+      ) {
+    return PatientModel.fromMap(
+      doc.data() ?? {},
+      doc.id,
+    );
+  }
 }

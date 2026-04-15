@@ -451,7 +451,7 @@ class _AIBodyCheckScreenState extends State<AIBodyCheckScreen> {
                   ],
                 ),
               ),
-              RiskBadge(riskLevel: _generatedReport!.overallRiskLevel),
+              RiskBadge(risk: _generatedReport!.overallRiskLevel),
             ],
           ),
           const SizedBox(height: 20),

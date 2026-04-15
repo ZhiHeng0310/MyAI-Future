@@ -420,7 +420,7 @@ class _AIReportSummarizerScreenState extends State<AIReportSummarizerScreen> {
                   ],
                 ),
               ),
-              RiskBadge(riskLevel: _generatedSummary!.riskLevel),
+              RiskBadge(risk: _generatedSummary!.riskLevel),
             ],
           ),
           const SizedBox(height: 20),
