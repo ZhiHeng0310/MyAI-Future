@@ -117,6 +117,19 @@ class InboxService extends ChangeNotifier {
         final data = doc.data();
         return data['isRead'] != true;
       }).toList();
+
+      // Batch update all unread notifications
+      if (unreadDocs.isNotEmpty) {
+        final batch = _firestore.batch();
+        for (var doc in unreadDocs) {
+          batch.update(doc.reference, {
+            'isRead': true,
+            'readAt': FieldValue.serverTimestamp(),
+          });
+        }
+        await batch.commit();
+        debugPrint('✅ Marked ${unreadDocs.length} notifications as read');
+      }
     } catch (e) {
       debugPrint('Error marking all as read: $e');
     }
@@ -234,7 +247,7 @@ class InboxService extends ChangeNotifier {
       userId: userId,
       title: '💊 Review your medications before your visit',
       message:
-          'Your appointment with Dr. $doctorName is coming up. Please review your medications before the visit.',
+      'Your appointment with Dr. $doctorName is coming up. Please review your medications before the visit.',
       type: NotificationType.medication,
       timestamp: DateTime.now(),
       metadata: {'action': 'open_medications'},

@@ -489,6 +489,28 @@ Be concise and helpful.`;
         response.unwell_symptoms = symptoms;
       }
 
+      // Check if patient is feeling unwell - send notification to doctor
+      if (response.feel_unwell || symptoms.length > 0 || risk !== 'low') {
+        response.feel_unwell = true;
+
+        // Get patient info and send notification to doctor
+        try {
+          const patient = await firestoreService.getPatient(userId);
+          if (patient && patient.assignedDoctorId) {
+            await firestoreService.sendUrgentMessage({
+              patientId: userId,
+              patientName: patient.name || 'Patient',
+              doctorId: patient.assignedDoctorId,
+              doctorName: 'Doctor',
+              message: message
+            });
+            console.log('🚨 Urgent notification sent to doctor for patient feeling unwell');
+          }
+        } catch (notifError) {
+          console.error('⚠️ Failed to send doctor notification (non-fatal):', notifError.message);
+        }
+      }
+
       // Log the interaction
       await firestoreService.logChatInteraction({
         userId,
