@@ -78,14 +78,26 @@ FIREBASE\_SERVICE\_ACCOUNT
 
 ## 5. Configure Frontend Environment Variables
 
-This file is loaded at runtime using flutter_dotenv.
+This project loads environment variables using flutter_dotenv, so the .env file must be placed inside the assets/ folder.
 
-Create a root `.env` file:
+Create:
+```
+assets/.env
+```
 
 ```env
 API_BASE_URL=https://your-backend-url.run.app
+GEMINI_KEY=your_gemini_api_key
+GEMINI_MODEL=gemma-3-27b-it
 DEFAULT_CLINIC_ID=clinic_main
 ```
+Then register it in pubspec.yaml:
+```
+flutter:
+  assets:
+    - assets/.env
+```
+Without adding the .env file to Flutter assets, flutter_dotenv will fail to load it at runtime.
 
 ---
 
