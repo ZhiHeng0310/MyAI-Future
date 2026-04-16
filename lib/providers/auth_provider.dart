@@ -37,13 +37,16 @@ class AuthProvider extends ChangeNotifier {
 
         await _loadProfile(u.uid);
 
-        Future(() async {
-          await NotificationService.init();
+        // Only save FCM token after profile is loaded and exists
+        if (_role != 'unknown') {
+          Future(() async {
+            await NotificationService.init();
 
-          final collection = _role == 'doctor' ? 'doctors' : 'patients';
+            final collection = _role == 'doctor' ? 'doctors' : 'patients';
 
-          await NotificationService.saveFcmToken(u.uid, collection);
-        });
+            await NotificationService.saveFcmToken(u.uid, collection);
+          });
+        }
 
         _profileLoading = false;
         notifyListeners();
@@ -114,7 +117,12 @@ class AuthProvider extends ChangeNotifier {
       );
 
       try {
+        // Ensure the document is saved before continuing
         await _db.savePatient(patient);
+
+        // Wait a moment to ensure Firestore write is complete
+        await Future.delayed(const Duration(milliseconds: 300));
+
       } catch (e) {
         await cred.user?.delete(); // rollback auth user
         _error = 'Failed to create profile. Please try again.';
@@ -142,7 +150,7 @@ class AuthProvider extends ChangeNotifier {
     required String clinicCode,
     String? specialization,
   }) async {
-    if (clinicCode.trim().toUpperCase() != 'CARELOOP-DOC-2024') {
+    if (clinicCode.trim().toUpperCase() != 'CARELOOP-DOC-67') {
       _error = 'Invalid clinic registration code.';
       notifyListeners();
       return false;
@@ -167,7 +175,12 @@ class AuthProvider extends ChangeNotifier {
       );
 
       try {
+        // Ensure the document is saved before continuing
         await _db.saveDoctor(doctor);
+
+        // Wait a moment to ensure Firestore write is complete
+        await Future.delayed(const Duration(milliseconds: 300));
+
       } catch (e) {
         await cred.user?.delete(); // rollback auth user
         _error = 'Failed to create doctor profile.';

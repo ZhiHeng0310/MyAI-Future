@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 // flutter_local_notifications is mobile/desktop only — guard with !kIsWeb
 import 'notification_service_web_stub.dart'
-  if (dart.library.io) 'package:flutter_local_notifications/flutter_local_notifications.dart';
+if (dart.library.io) 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz_data;
 
@@ -32,7 +32,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     notificationDetails: NotificationDetails(
       android: AndroidNotificationDetails(
         channelId, _channelName(channelId),
-         importance: Importance.max, priority: Priority.max,
+        importance: Importance.max, priority: Priority.max,
         icon: '@mipmap/ic_launcher',
       ),
       iOS: const DarwinNotificationDetails(),
@@ -155,10 +155,26 @@ class NotificationService {
           .collection(collection)
           .doc(userId);
 
-      await docRef.set(
-        {'fcmToken': token},
-        SetOptions(merge: true),
-      );
+      // Wait a moment to ensure the document exists (handles race condition)
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Verify document exists before updating
+      final docSnapshot = await docRef.get();
+      if (!docSnapshot.exists) {
+        debugPrint('Document does not exist yet for $userId in $collection. Will retry...');
+        // Retry after a longer delay
+        await Future.delayed(const Duration(seconds: 1));
+      }
+
+      // Use update instead of set with merge to be more explicit
+      await docRef.update({'fcmToken': token}).catchError((e) async {
+        // If update fails (document doesn't exist), create it with set
+        debugPrint('Update failed, creating document with set for $userId');
+        await docRef.set(
+          {'fcmToken': token},
+          SetOptions(merge: true),
+        );
+      });
 
       debugPrint('FCM token saved for $userId');
 
