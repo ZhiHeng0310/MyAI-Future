@@ -22,7 +22,7 @@ class AppConfig {
 
   static const String apiBaseUrl = String.fromEnvironment(
       'API_BASE_URL',
-      defaultValue: "https://backend-api-362769739395.asia-southeast1.run.app"
+      defaultValue: "http://localhost:58469/"
   );
 
   static String _get(String key, String fallback) {

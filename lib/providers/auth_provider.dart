@@ -30,34 +30,31 @@ class AuthProvider extends ChangeNotifier {
   AuthProvider() {
     _auth.authStateChanges().listen((u) async {
       _user = u;
+
       if (u != null) {
         _profileLoading = true;
         notifyListeners();
-        try {
-          await _loadProfile(u.uid);
-        } catch (e) {
-          debugPrint('AuthProvider: profile load failed: $e');
-        }
 
-        // Initialize notifications in the background so login is not blocked.
+        await _loadProfile(u.uid);
+
         Future(() async {
-          try {
-            await NotificationService.init();
-            final collection = _role == 'doctor' ? 'doctors' : 'patients';
-            await NotificationService.saveFcmToken(u.uid, collection);
-          } catch (e) {
-            debugPrint('AuthProvider: notification init failed: $e');
-          }
+          await NotificationService.init();
+
+          final collection = _role == 'doctor' ? 'doctors' : 'patients';
+
+          await NotificationService.saveFcmToken(u.uid, collection);
         });
 
         _profileLoading = false;
+        notifyListeners();
       } else {
-        _patient        = null;
-        _doctor         = null;
-        _role           = 'unknown';
+        _patient = null;
+        _doctor = null;
+        _role = 'unknown';
         _profileLoading = false;
+
+        notifyListeners();
       }
-      notifyListeners();
     });
   }
 
@@ -105,12 +102,27 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final cred = await _auth.createUserWithEmailAndPassword(
-          email: email, password: password);
+        email: email,
+        password: password,
+      );
+
       final patient = PatientModel(
-          id: cred.user!.uid, name: name, email: email, phone: phone);
-      await _db.savePatient(patient);
+        id: cred.user!.uid,
+        name: name,
+        email: email,
+        phone: phone,
+      );
+
+      try {
+        await _db.savePatient(patient);
+      } catch (e) {
+        await cred.user?.delete(); // rollback auth user
+        _error = 'Failed to create profile. Please try again.';
+        return false;
+      }
+
       _patient = patient;
-      _role    = 'patient';
+      _role = 'patient';
       return true;
     } on FirebaseAuthException catch (e) {
       _error = _friendlyError(e.code);
@@ -135,25 +147,42 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+
     _loading = true;
-    _error   = null;
+    _error = null;
     notifyListeners();
+
     try {
       final cred = await _auth.createUserWithEmailAndPassword(
-          email: email, password: password);
+        email: email,
+        password: password,
+      );
+
       final doctor = DoctorModel(
-        id:             cred.user!.uid,
-        name:           name,
-        email:          email,
-        doctorId:       doctorId,
+        id: cred.user!.uid,
+        name: name,
+        email: email,
+        doctorId: doctorId,
         specialization: specialization,
       );
-      await _db.saveDoctor(doctor);
+
+      try {
+        await _db.saveDoctor(doctor);
+      } catch (e) {
+        await cred.user?.delete(); // rollback auth user
+        _error = 'Failed to create doctor profile.';
+        return false;
+      }
+
       _doctor = doctor;
-      _role   = 'doctor';
-      return true;
+      _role = 'doctor';
+
+      return true; // ✅ IMPORTANT
     } on FirebaseAuthException catch (e) {
       _error = _friendlyError(e.code);
+      return false;
+    } catch (e) {
+      _error = 'Unexpected error occurred.';
       return false;
     } finally {
       _loading = false;

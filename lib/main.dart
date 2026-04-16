@@ -9,8 +9,6 @@ import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-
-import 'app_config.dart';
 import 'firebase_options.dart';
 import 'models/notification_model.dart';
 import 'providers/auth_provider.dart';
@@ -26,7 +24,6 @@ import 'screens/home/home_screen.dart';
 import 'screens/doctor/doctor_home_screen.dart';
 import 'services/inbox_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:careloop/screens/appointment/appointment_screen.dart';
 import 'package:careloop/screens/appointment/appointment_details_screen.dart';
 
 
