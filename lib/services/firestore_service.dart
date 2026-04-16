@@ -26,7 +26,7 @@ class FirestoreService {
       _db
           .collection('patients')
           .doc(patientId)
-          .update({'assignedDoctorId': doctorId});
+          .set({'assignedDoctorId': doctorId});
 
   Stream<List<PatientModel>> allPatientsStream() => _db
       .collection('patients')

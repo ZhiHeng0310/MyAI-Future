@@ -263,19 +263,21 @@ class FirestoreService {
    * @param {string} risk - Risk level
    * @returns {Promise<void>}
    */
-  async updatePatientRiskLevel(userId, risk) {
-    this.initialize();
+    async updatePatientRiskLevel(userId, risk) {
+      this.initialize();
 
-    try {
-      await this.db.collection('patients').doc(userId).update({
-        riskLevel: risk,
-        lastRiskUpdate: this.FieldValue.serverTimestamp()
-      });
-    } catch (error) {
-      console.error('Error updating risk level:', error);
-      // Don't throw - this is a non-critical update
+      try {
+        await this.db.collection('patients').doc(userId).set(
+          {
+            riskLevel: risk,
+            lastRiskUpdate: this.FieldValue.serverTimestamp()
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        console.error('Error updating risk level:', error);
+      }
     }
-  }
 
   /**
    * Get all doctors (used when patient has no assigned doctor)
