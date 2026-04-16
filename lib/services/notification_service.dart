@@ -152,13 +152,13 @@ class NotificationService {
       if (token == null) return;
       await FirebaseFirestore.instance
           .collection(collection).doc(userId)
-          .update({'fcmToken': token});
+          .set({'fcmToken': token});
       debugPrint('FCM token saved for $userId');
 
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
         FirebaseFirestore.instance
             .collection(collection).doc(userId)
-            .update({'fcmToken': newToken});
+            .set({'fcmToken': newToken});
       });
     } catch (e) {
       debugPrint('Failed to save FCM token: $e');
