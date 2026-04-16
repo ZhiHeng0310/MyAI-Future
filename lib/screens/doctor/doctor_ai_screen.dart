@@ -13,8 +13,7 @@ class DoctorAIScreen extends StatelessWidget {
     try {
       // Fetch patients from Firestore
       final patientsSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('role', isEqualTo: 'patient')
+          .collection('patients')
           .limit(50)
           .get();
 

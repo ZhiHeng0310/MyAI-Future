@@ -30,8 +30,37 @@ service cloud.firestore {
       return request.auth != null && (request.auth.token.role == 'staff' || request.auth.token.role == 'doctor');
     }
 
+    function isUserRole(role) {
+      return request.auth != null && request.auth.token.role == role;
+    }
+
     // ══════════════════════════════════════════════════════════════════════════
-    // PATIENTS COLLECTION
+    // USERS COLLECTION (Combined patients and doctors)
+    // ══════════════════════════════════════════════════════════════════════════
+    match /users/{userId} {
+      // Read: Own profile OR doctors can read all users
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId ||
+        isDoctorRole() ||
+        isDoctorUser() ||
+        isStaff()
+      );
+
+      // Create: Own profile only
+      allow create: if isSignedIn() && request.auth.uid == userId;
+
+      // Update: Own profile OR doctors can update patient assignments
+      allow update: if isSignedIn() && (
+        request.auth.uid == userId ||
+        (isDoctorRole() || isDoctorUser()) && resource.data.role == 'patient'
+      );
+
+      // Delete: Own profile only
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // PATIENTS COLLECTION (Legacy - for backward compatibility)
     // ══════════════════════════════════════════════════════════════════════════
     match /patients/{userId} {
       allow read: if isPatient(userId) || isDoctorRole() || isDoctorUser();
@@ -101,6 +130,81 @@ service cloud.firestore {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
+    // AI MEDICAL REPORTS COLLECTION
+    // ══════════════════════════════════════════════════════════════════════════
+    match /medical_reports/{reportId} {
+      // Doctors can create and read all reports
+      // Patients can read their own reports
+      allow create: if isSignedIn() && (isDoctorRole() || isDoctorUser());
+
+      allow read: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        resource.data.doctorId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
+
+      allow update: if isSignedIn() && (
+        resource.data.doctorId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
+
+      allow delete: if isSignedIn() && (
+        resource.data.doctorId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // AI REPORT SUMMARIES COLLECTION
+    // ══════════════════════════════════════════════════════════════════════════
+    match /report_summaries/{summaryId} {
+      // Doctors can create summaries
+      // Patients can read their own summaries
+      allow create: if isSignedIn() && (isDoctorRole() || isDoctorUser());
+
+      allow read: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
+
+      allow update: if isSignedIn() && (isDoctorRole() || isDoctorUser());
+
+      allow delete: if isSignedIn() && (isDoctorRole() || isDoctorUser());
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // INBOX MESSAGES COLLECTION (AI-generated summaries sent to patients)
+    // ══════════════════════════════════════════════════════════════════════════
+    match /inbox_messages/{messageId} {
+      // Doctors can create messages
+      // Patients can read their own messages
+      allow create: if isSignedIn() && (isDoctorRole() || isDoctorUser());
+
+      allow read: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        resource.data.doctorId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
+
+      allow update: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
+
+      allow delete: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
     // DOSE LOGS COLLECTION
     // ══════════════════════════════════════════════════════════════════════════
     match /dose_logs/{logId} {
@@ -114,7 +218,7 @@ service cloud.firestore {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // MEDICATION LOGS COLLECTION (if used separately from dose_logs)
+    // MEDICATION LOGS COLLECTION
     // ══════════════════════════════════════════════════════════════════════════
     match /medication_logs/{logId} {
       allow create: if isSignedIn() && request.resource.data.patientId == request.auth.uid;
@@ -255,7 +359,7 @@ service cloud.firestore {
     // NOTIFICATIONS (top-level app inbox entries)
     // ══════════════════════════════════════════════════════════════════════════
     match /notifications/{notificationId} {
-      allow create: if isSignedIn() && request.resource.data.userId is string;
+      allow create: if isSignedIn();
       allow read: if isSignedIn() && (
         resource.data.userId == request.auth.uid ||
         isDoctorUser()
@@ -283,7 +387,35 @@ service cloud.firestore {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // DENY ALL OTHER ACCESS
+    // CHAT CONVERSATIONS (for AI chat feature)
+    // ══════════════════════════════════════════════════════════════════════════
+    match /conversations/{conversationId} {
+      allow create: if isSignedIn();
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
+      allow update: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // CHAT MESSAGES (nested under conversations)
+    // ══════════════════════════════════════════════════════════════════════════
+    match /conversations/{conversationId}/messages/{messageId} {
+      allow create: if isSignedIn();
+      allow read: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if false;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // DENY ALL OTHER ACCESS (Security first!)
     // ══════════════════════════════════════════════════════════════════════════
     match /{document=**} {
       allow read, write: if false;
