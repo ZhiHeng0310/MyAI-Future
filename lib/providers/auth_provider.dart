@@ -40,11 +40,13 @@ class AuthProvider extends ChangeNotifier {
         // Only save FCM token after profile is loaded and exists
         if (_role != 'unknown') {
           Future(() async {
-            await NotificationService.init();
-
-            final collection = _role == 'doctor' ? 'doctors' : 'patients';
-
-            await NotificationService.saveFcmToken(u.uid, collection);
+            try {
+              await NotificationService.init();
+              final collection = _role == 'doctor' ? 'doctors' : 'patients';
+              await NotificationService.saveFcmToken(u.uid, collection);
+            } catch (e) {
+              debugPrint('FCM token save non-critical error: $e');
+            }
           });
         }
 
@@ -63,16 +65,20 @@ class AuthProvider extends ChangeNotifier {
 
   // ─── Profile loader ───────────────────────────────────────────────────────
   Future<void> _loadProfile(String uid) async {
-    final doc = await _db.getDoctor(uid);
-    if (doc != null) {
-      _doctor = doc;
-      _role   = 'doctor';
-      return;
-    }
-    final patient = await _db.getPatient(uid);
-    if (patient != null) {
-      _patient = patient;
-      _role    = 'patient';
+    try {
+      final doc = await _db.getDoctor(uid);
+      if (doc != null) {
+        _doctor = doc;
+        _role   = 'doctor';
+        return;
+      }
+      final patient = await _db.getPatient(uid);
+      if (patient != null) {
+        _patient = patient;
+        _role    = 'patient';
+      }
+    } catch (e) {
+      debugPrint('Error loading profile: $e');
     }
   }
 
@@ -81,11 +87,19 @@ class AuthProvider extends ChangeNotifier {
     _loading = true;
     _error   = null;
     notifyListeners();
+
     try {
+      debugPrint('Attempting sign in for: $email');
       await _auth.signInWithEmailAndPassword(email: email, password: password);
+      debugPrint('Sign in successful');
       return true;
     } on FirebaseAuthException catch (e) {
+      debugPrint('Sign in error: ${e.code} - ${e.message}');
       _error = _friendlyError(e.code);
+      return false;
+    } catch (e) {
+      debugPrint('Unexpected sign in error: $e');
+      _error = 'An unexpected error occurred. Please try again.';
       return false;
     } finally {
       _loading = false;
@@ -103,12 +117,21 @@ class AuthProvider extends ChangeNotifier {
     _loading = true;
     _error   = null;
     notifyListeners();
+
+    debugPrint('=== Starting Patient Registration ===');
+    debugPrint('Email: $email');
+    debugPrint('Name: $name');
+
     try {
+      // Step 1: Create Firebase Auth user
+      debugPrint('Step 1: Creating Firebase Auth user...');
       final cred = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
+      debugPrint('Auth user created with UID: ${cred.user!.uid}');
 
+      // Step 2: Create patient model
       final patient = PatientModel(
         id: cred.user!.uid,
         name: name,
@@ -117,23 +140,45 @@ class AuthProvider extends ChangeNotifier {
       );
 
       try {
-        // Ensure the document is saved before continuing
+        // Step 3: Save to Firestore
+        debugPrint('Step 2: Saving patient to Firestore...');
         await _db.savePatient(patient);
+        debugPrint('Patient saved to Firestore successfully');
 
-        // Wait a moment to ensure Firestore write is complete
-        await Future.delayed(const Duration(milliseconds: 300));
+        // Step 4: Wait for Firestore to propagate
+        debugPrint('Step 3: Waiting for Firestore propagation...');
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        // Step 5: Verify document exists
+        debugPrint('Step 4: Verifying document exists...');
+        final verifyDoc = await _db.getPatient(cred.user!.uid);
+        if (verifyDoc == null) {
+          throw Exception('Failed to verify patient document creation');
+        }
+        debugPrint('Document verified successfully');
 
       } catch (e) {
-        await cred.user?.delete(); // rollback auth user
+        debugPrint('Error saving patient: $e');
+        // Rollback: Delete auth user
+        debugPrint('Rolling back: Deleting auth user...');
+        await cred.user?.delete();
         _error = 'Failed to create profile. Please try again.';
         return false;
       }
 
       _patient = patient;
       _role = 'patient';
+
+      debugPrint('=== Patient Registration Complete ===');
       return true;
+
     } on FirebaseAuthException catch (e) {
+      debugPrint('Firebase Auth error: ${e.code} - ${e.message}');
       _error = _friendlyError(e.code);
+      return false;
+    } catch (e) {
+      debugPrint('Unexpected registration error: $e');
+      _error = 'Registration failed. Please try again.';
       return false;
     } finally {
       _loading = false;
@@ -150,7 +195,8 @@ class AuthProvider extends ChangeNotifier {
     required String clinicCode,
     String? specialization,
   }) async {
-    if (clinicCode.trim().toUpperCase() != 'CARELOOP-DOC-67') {
+    // Validate clinic code first
+    if (clinicCode.trim().toUpperCase() != 'CARELOOP-DOC-2024') {
       _error = 'Invalid clinic registration code.';
       notifyListeners();
       return false;
@@ -160,12 +206,21 @@ class AuthProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
 
+    debugPrint('=== Starting Doctor Registration ===');
+    debugPrint('Email: $email');
+    debugPrint('Name: $name');
+    debugPrint('Doctor ID: $doctorId');
+
     try {
+      // Step 1: Create Firebase Auth user
+      debugPrint('Step 1: Creating Firebase Auth user...');
       final cred = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
+      debugPrint('Auth user created with UID: ${cred.user!.uid}');
 
+      // Step 2: Create doctor model
       final doctor = DoctorModel(
         id: cred.user!.uid,
         name: name,
@@ -175,14 +230,28 @@ class AuthProvider extends ChangeNotifier {
       );
 
       try {
-        // Ensure the document is saved before continuing
+        // Step 3: Save to Firestore
+        debugPrint('Step 2: Saving doctor to Firestore...');
         await _db.saveDoctor(doctor);
+        debugPrint('Doctor saved to Firestore successfully');
 
-        // Wait a moment to ensure Firestore write is complete
-        await Future.delayed(const Duration(milliseconds: 300));
+        // Step 4: Wait for Firestore to propagate
+        debugPrint('Step 3: Waiting for Firestore propagation...');
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        // Step 5: Verify document exists
+        debugPrint('Step 4: Verifying document exists...');
+        final verifyDoc = await _db.getDoctor(cred.user!.uid);
+        if (verifyDoc == null) {
+          throw Exception('Failed to verify doctor document creation');
+        }
+        debugPrint('Document verified successfully');
 
       } catch (e) {
-        await cred.user?.delete(); // rollback auth user
+        debugPrint('Error saving doctor: $e');
+        // Rollback: Delete auth user
+        debugPrint('Rolling back: Deleting auth user...');
+        await cred.user?.delete();
         _error = 'Failed to create doctor profile.';
         return false;
       }
@@ -190,12 +259,16 @@ class AuthProvider extends ChangeNotifier {
       _doctor = doctor;
       _role = 'doctor';
 
-      return true; // ✅ IMPORTANT
+      debugPrint('=== Doctor Registration Complete ===');
+      return true;
+
     } on FirebaseAuthException catch (e) {
+      debugPrint('Firebase Auth error: ${e.code} - ${e.message}');
       _error = _friendlyError(e.code);
       return false;
     } catch (e) {
-      _error = 'Unexpected error occurred.';
+      debugPrint('Unexpected registration error: $e');
+      _error = 'Registration failed. Please try again.';
       return false;
     } finally {
       _loading = false;
@@ -216,7 +289,10 @@ class AuthProvider extends ChangeNotifier {
       case 'invalid-credential':    return 'Incorrect email or password.';
       case 'email-already-in-use':  return 'Email already registered.';
       case 'weak-password':         return 'Password must be at least 6 characters.';
-      default:                      return 'Authentication failed. Please try again.';
+      case 'invalid-email':         return 'Invalid email address.';
+      case 'operation-not-allowed': return 'Registration is currently disabled. Please contact support.';
+      case 'network-request-failed': return 'Network error. Please check your connection.';
+      default:                      return 'Authentication failed: $code';
     }
   }
 }

@@ -1,0 +1,12 @@
+# Force correct MIME type for service worker files
+<Files "firebase-messaging-sw.js">
+    Header set Content-Type "application/javascript; charset=utf-8"
+    Header set Service-Worker-Allowed "/"
+</Files>
+
+# Enable CORS for Firebase
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type"
+</IfModule>

@@ -1,6 +1,6 @@
 # ── Secrets — NEVER commit these ────────────────────────────
 *.env
-assets/.env
+.env
 
 # Never commit real Firebase config files
 android/app/google-services.json
