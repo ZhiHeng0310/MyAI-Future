@@ -218,7 +218,31 @@ router.post('/send-summary-to-patient', async (req, res) => {
       }
     });
 
+    // ✅ FIX: Send push notification to patient
+    const pushNotificationRef = db.collection('push_notifications').doc();
+    const doctorName = doctorId && doctorId !== 'AI_SYSTEM'
+      ? await _getDoctorName(doctorId)
+      : 'Your Doctor';
+
+    await pushNotificationRef.set({
+      userId: patientId,
+      collection: 'patient',
+      title: '📋 Health Report Summary',
+      body: summaryData.risk_level === 'high' || summaryData.risk_level === 'critical'
+        ? `⚠️ ${doctorName} has sent you an important health report. Please review it soon.`
+        : `${doctorName} has sent you your body check report summary. Tap to view.`,
+      channel: 'careloop_alerts',
+      sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      status: 'pending',
+      metadata: {
+        type: 'report_summary',
+        summaryId: summaryId,
+        riskLevel: summaryData.risk_level
+      }
+    });
+
     console.log('✅ Summary sent to patient inbox');
+    console.log('✅ Push notification queued for patient');
 
     res.json({
       success: true,
@@ -325,5 +349,20 @@ router.get('/summaries/:patientId', async (req, res) => {
     });
   }
 });
+
+/**
+ * Helper function to get doctor name from Firestore
+ */
+async function _getDoctorName(doctorId) {
+  try {
+    const doctorDoc = await db.collection('users').doc(doctorId).get();
+    if (doctorDoc.exists) {
+      return doctorDoc.data().name || 'Your Doctor';
+    }
+  } catch (error) {
+    console.error('Error fetching doctor name:', error);
+  }
+  return 'Your Doctor';
+}
 
 export default router;

@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/ai_service.dart';
+import '../../services/notification_service.dart';
 import '../../models/ai_summary_model.dart';
 import '../../models/patient_model.dart';
 import '../../widgets/risk_badge.dart';
@@ -98,6 +99,22 @@ class _AIReportSummarizerScreenState extends State<AIReportSummarizerScreen> {
     } catch (e) {
       print('❌ Error loading patient: $e');
     }
+  }
+
+  Future<String> _getDoctorNameFromId(String doctorId) async {
+    try {
+      final doctorDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(doctorId)
+          .get();
+
+      if (doctorDoc.exists) {
+        return doctorDoc.data()?['name'] ?? 'Your Doctor';
+      }
+    } catch (e) {
+      print('❌ Error fetching doctor name: $e');
+    }
+    return 'Your Doctor';
   }
 
   Future<void> _generateSummary() async {
@@ -217,6 +234,31 @@ class _AIReportSummarizerScreenState extends State<AIReportSummarizerScreen> {
       );
 
       if (result['success']) {
+        // ✅ FIX: Send push notification to patient after summary is sent
+        try {
+          final doctorName = widget.doctorId != null
+              ? await _getDoctorNameFromId(widget.doctorId!)
+              : 'Your Doctor';
+
+          final isHighRisk = _generatedSummary!.riskLevel == 'high' ||
+              _generatedSummary!.riskLevel == 'critical';
+
+          await NotificationService.sendPushToUser(
+            userId: _selectedPatientId!,
+            userCollection: 'patient',
+            title: '📋 Health Report Summary',
+            body: isHighRisk
+                ? '⚠️ $doctorName has sent you an important health report. Please review it soon.'
+                : '$doctorName has sent you your body check report summary.',
+            channel: 'careloop_alerts',
+          );
+
+          print('✅ Push notification sent to patient for report summary');
+        } catch (e) {
+          print('⚠️ Failed to send push notification: $e');
+          // Don't fail the whole operation if notification fails
+        }
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
