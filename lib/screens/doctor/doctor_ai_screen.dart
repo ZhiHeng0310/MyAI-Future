@@ -11,9 +11,9 @@ class DoctorAIScreen extends StatelessWidget {
 
   Future<void> _showPatientSelector(BuildContext context, String doctorId) async {
     try {
-      // Fetch patients from Firestore
+      // Fetch patient from Firestore
       final patientsSnapshot = await FirebaseFirestore.instance
-          .collection('patients')
+          .collection('patient')
           .limit(50)
           .get();
 
@@ -36,7 +36,7 @@ class DoctorAIScreen extends StatelessWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('No patients found. Please add patients first.'),
+              content: Text('No patient found. Please add patient first.'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -93,11 +93,11 @@ class DoctorAIScreen extends StatelessWidget {
         );
       }
     } catch (e) {
-      print('Error loading patients: $e');
+      print('Error loading patient: $e');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error loading patients: ${e.toString()}'),
+            content: Text('Error loading patient: ${e.toString()}'),
             backgroundColor: Colors.red,
           ),
         );

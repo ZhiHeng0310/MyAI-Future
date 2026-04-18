@@ -83,7 +83,7 @@ class _AlertsList extends StatelessWidget {
                     style: GoogleFonts.poppins(
                         fontSize: 18, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
-                Text('All patients are doing well.',
+                Text('All patient are doing well.',
                     style: GoogleFonts.dmSans(
                         color: const Color(0xFF667085))),
               ],
@@ -319,7 +319,7 @@ class _AlertCard extends StatelessWidget {
     // 3. Push notification to PATIENT
     await NotificationService.sendPushToUser(
       userId: a.patientId,
-      userCollection: 'patients',
+      userCollection: 'patient',
       title: '👨‍⚕️ Dr. $doctorName sent you advice',
       body: doctorResponse,
       channel: 'careloop_queue',

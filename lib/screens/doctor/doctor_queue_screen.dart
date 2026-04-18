@@ -40,7 +40,7 @@ class DoctorQueueScreen extends StatelessWidget {
                     style: GoogleFonts.poppins(
                         fontSize: 18, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
-                Text('No patients waiting right now.',
+                Text('No patient waiting right now.',
                     style: GoogleFonts.dmSans(color: const Color(0xFF667085))),
               ],
             ),
@@ -111,7 +111,7 @@ class _QueueCard extends StatelessWidget {
     // 3. Send push notification to PATIENT (not doctor)
     await NotificationService.sendPushToUser(
       userId:         entry.patientId,
-      userCollection: 'patients',
+      userCollection: 'patient',
       title:          title,
       body:           body,
       channel:        'careloop_queue',
@@ -131,7 +131,7 @@ class _QueueCard extends StatelessWidget {
 
     await NotificationService.sendPushToUser(
       userId:         entry.patientId,
-      userCollection: 'patients',
+      userCollection: 'patient',
       title:          '⚡ Priority Updated',
       body:           'Your queue priority has been raised. Please stand by.',
       channel:        'careloop_queue',

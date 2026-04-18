@@ -1,9 +1,13 @@
 // lib/screens/inbox_screen.dart
+// lib/screens/inbox_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/notification_model.dart';
+import '../models/ai_summary_model.dart';
 import '../providers/auth_provider.dart';
 import '../screens/appointment/appointment_booking_screen.dart';
+import '../screens/patient/patient_report_viewer_screen.dart';
 import '../services/firestore_service.dart';
 import '../services/notification_service.dart';
 import 'home/home_screen.dart';
@@ -315,7 +319,7 @@ class _NotificationTile extends StatelessWidget {
   bool _isAppointmentRequest() {
     return notification.type == NotificationType.appointment &&
         notification.metadata?['action'] == 'open_appointments' &&
-         notification.metadata?['doctorId'] != null &&
+        notification.metadata?['doctorId'] != null &&
         notification.metadata?['requestMessage'] != null;
   }
 
@@ -367,7 +371,7 @@ class _NotificationTile extends StatelessWidget {
       userId: doctorId,
       title: '❌ Appointment Request Declined',
       message:
-          '${patient.name} declined the appointment request from Dr. ${doctorName ?? 'your doctor'}.',
+      '${patient.name} declined the appointment request from Dr. ${doctorName ?? 'your doctor'}.',
     );
 
     await NotificationService.sendPushToUser(
@@ -384,6 +388,13 @@ class _NotificationTile extends StatelessWidget {
   }
 
   void _handleNotificationTap(BuildContext context) {
+    // Handle report summary notifications
+    if (notification.type == NotificationType.general &&
+        notification.metadata?['type'] == 'report_summary') {
+      _handleReportSummaryNotification(context);
+      return;
+    }
+
     // Handle navigation based on notification type
     if (_isAppointmentRequest()) {
       _showAppointmentRequestDialog(context);
@@ -443,6 +454,80 @@ class _NotificationTile extends StatelessWidget {
       case NotificationType.general:
       // No specific action
         break;
+    }
+  }
+
+  Future<void> _handleReportSummaryNotification(BuildContext context) async {
+    final summaryId = notification.metadata?['summaryId'];
+
+    if (summaryId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Report data not found'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      // Fetch the summary from Firestore
+      final summaryDoc = await FirebaseFirestore.instance
+          .collection('report_summaries')
+          .doc(summaryId)
+          .get();
+
+      if (!summaryDoc.exists || !context.mounted) {
+        Navigator.pop(context); // Close loading
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Report not found'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final summaryData = summaryDoc.data()!['summaryData'];
+      final summary = AISummary.fromJson(summaryData);
+
+      // Close loading
+      Navigator.pop(context);
+
+      // Navigate to report viewer
+      if (context.mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PatientReportViewerScreen(
+              summary: summary,
+              reportId: summaryDoc.data()!['reportId'],
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading
+      if (context.mounted) Navigator.pop(context);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading report: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

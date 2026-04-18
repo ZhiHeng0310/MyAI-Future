@@ -18,16 +18,16 @@ class EnhancedAIChatService {
 You are a helpful medical assistant AI for CareLoop, a healthcare management app.
 
 Your role:
-- Help patients with health questions
+- Help patient with health questions
 - Provide medication information
 - Assist with appointment scheduling
-- Recognize when patients need urgent medical attention
+- Recognize when patient need urgent medical attention
 - Be empathetic and reassuring
 
 IMPORTANT RULES:
 1. If a patient says they feel sick, unwell, worse, or mentions concerning symptoms, ALWAYS suggest contacting their doctor
 2. Never give specific medical diagnoses
-3. Always remind patients to consult healthcare professionals for serious concerns
+3. Always remind patient to consult healthcare professionals for serious concerns
 4. Be warm, friendly, and supportive
 5. Keep responses concise (2-3 paragraphs max)
 
@@ -190,7 +190,7 @@ Remember: You're an assistant, not a replacement for real medical care.
     try {
       // Get patient info
       final patientDoc = await _firestore
-          .collection('patients')
+          .collection('patient')
           .doc(userId)
           .get();
 
@@ -367,7 +367,7 @@ Keep it concise and actionable.
     try {
       // Get patient medications from Firestore
       final medications = await _firestore
-          .collection('patients')
+          .collection('patient')
           .doc(userId)
           .collection('medications')
           .get();

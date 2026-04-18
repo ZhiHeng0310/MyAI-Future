@@ -119,7 +119,7 @@ class AppointmentProvider extends ChangeNotifier {
         // 5. Push notification (works when app is closed/background)
         await NotificationService.sendPushToUser(
           userId:         patient.id,
-          userCollection: 'patients',
+          userCollection: 'patient',
           title:          '✅ Appointment Confirmed',
           body:           'Dr. ${doctor.name} on ${appt.dateLabel} at $timeSlot',
           channel:        'careloop_queue',

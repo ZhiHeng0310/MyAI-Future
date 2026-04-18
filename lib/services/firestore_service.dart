@@ -14,22 +14,22 @@ class FirestoreService {
   // ─── Patient ──────────────────────────────────────────────────────────────
 
   Future<PatientModel?> getPatient(String uid) async {
-    final doc = await _db.collection('patients').doc(uid).get();
+    final doc = await _db.collection('patient').doc(uid).get();
     if (!doc.exists) return null;
     return PatientModel.fromMap(doc.data()!, doc.id);
   }
 
   Future<void> savePatient(PatientModel p) =>
-      _db.collection('patients').doc(p.id).set(p.toMap());
+      _db.collection('patient').doc(p.id).set(p.toMap());
 
   Future<void> assignDoctor(String patientId, String doctorId) =>
       _db
-          .collection('patients')
+          .collection('patient')
           .doc(patientId)
           .update({'assignedDoctorId': doctorId});
 
   Stream<List<PatientModel>> allPatientsStream() => _db
-      .collection('patients')
+      .collection('patient')
       .snapshots()
       .map((s) =>
       s.docs.map((d) => PatientModel.fromMap(d.data(), d.id)).toList());

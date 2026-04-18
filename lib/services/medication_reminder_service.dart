@@ -26,7 +26,7 @@ class MedicationReminderService {
 
     // Listen to medication schedule changes
     _firestore
-        .collection('patients')
+        .collection('patient')
         .doc(userId)
         .collection('medications')
         .snapshots()
@@ -157,7 +157,7 @@ class MedicationReminderService {
       final endOfDay = startOfDay.add(const Duration(days: 1));
 
       final logs = await _firestore
-          .collection('patients')
+          .collection('patient')
           .doc(userId)
           .collection('medication_logs')
           .where('medicationId', isEqualTo: medicationId)
@@ -193,7 +193,7 @@ class MedicationReminderService {
 
         // Also mark in database that reminder was sent
         await _firestore
-            .collection('patients')
+            .collection('patient')
             .doc(userId)
             .collection('medication_logs')
             .add({

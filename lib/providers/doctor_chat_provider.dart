@@ -71,7 +71,7 @@ class DoctorChatProvider extends ChangeNotifier {
           .map((p) => '${p.name} (Dx: ${p.diagnosis ?? "N/A"})')
           .toList();
 
-      debugPrint('🔵 Doctor AI: Dr. ${doctor.name} has ${_myPatients.length} patients via prescriptions');
+      debugPrint('🔵 Doctor AI: Dr. ${doctor.name} has ${_myPatients.length} patient via prescriptions');
 
       try {
         await _gemini.initSession(
@@ -88,9 +88,9 @@ class DoctorChatProvider extends ChangeNotifier {
           text: 'Hello Dr. ${doctor.name.split(' ').last}! 👋 I\'m your CareLoop AI assistant.\n\n'
               'You have ${_myPatients.length} patient(s) via prescriptions.\n\n'
               'I can help you:\n'
-              '👥 Check how your patients are doing today\n'
+              '👥 Check how your patient are doing today\n'
               '📊 Review medication adherence (for your prescriptions)\n'
-              '💬 Send messages to patients\n'
+              '💬 Send messages to patient\n'
               '📅 Request appointments\n'
               '🚨 Review recent alerts (last 24 hours)\n\n'
               'What would you like to do?',
@@ -113,7 +113,7 @@ class DoctorChatProvider extends ChangeNotifier {
         ));
       }
     } catch (e) {
-      debugPrint('❌ Doctor AI: Failed to load patients: $e');
+      debugPrint('❌ Doctor AI: Failed to load patient: $e');
       _sessionReady = true;
       _messages.add(DoctorChatMessage(
         text: '⚠️ **Database Connection Issue**\n\n'
@@ -150,9 +150,9 @@ class DoctorChatProvider extends ChangeNotifier {
       }
 
       debugPrint(
-          '✅ Loaded ${_myPatients.length} patients via ${myMeds.length} prescriptions');
+          '✅ Loaded ${_myPatients.length} patient via ${myMeds.length} prescriptions');
     } catch (e) {
-      debugPrint('❌ Error loading patients: $e');
+      debugPrint('❌ Error loading patient: $e');
       _myPatients = [];
       _myPrescriptions = {};
     }
@@ -269,9 +269,9 @@ class DoctorChatProvider extends ChangeNotifier {
 
     // SPEC FEATURE 1: How Are My Patients Today?
     if (response.actions.contains('review_my_patients') ||
-        query.toLowerCase().contains('how are my patients') ||
+        query.toLowerCase().contains('how are my patient') ||
         query.toLowerCase().contains('patient status') ||
-        query.toLowerCase().contains('my patients today')) {
+        query.toLowerCase().contains('my patient today')) {
       displayMsg = await _handleHowAreMyPatients();
 
       // ✅ FIX: Add patient selection UI
@@ -358,7 +358,7 @@ class DoctorChatProvider extends ChangeNotifier {
     if (_doctor == null) return 'No doctor context available.';
 
     if (_myPatients.isEmpty) {
-      return 'You don\'t have any patients yet. Patients will appear here once you prescribe medications to them.';
+      return 'You don\'t have any patient yet. Patients will appear here once you prescribe medications to them.';
     }
 
     // Refresh patient data for latest adherence
@@ -453,7 +453,7 @@ class DoctorChatProvider extends ChangeNotifier {
 
       if (alertsSnapshot.docs.isEmpty && notificationsSnapshot.docs.isEmpty) {
         return '✅ **No Recent Alerts (Last 24 Hours)**\n\n'
-            'Great news! None of your patients have triggered any health alerts in the past 24 hours.';
+            'Great news! None of your patient have triggered any health alerts in the past 24 hours.';
       }
 
       // ✅ Parse health_alerts
@@ -499,7 +499,7 @@ class DoctorChatProvider extends ChangeNotifier {
 
       if (recentAlerts.isEmpty && notificationAlerts.isEmpty) {
         return '✅ **No Recent Alerts (Last 24 Hours)**\n\n'
-            'Great news! None of your patients have triggered any health alerts in the past 24 hours.';
+            'Great news! None of your patient have triggered any health alerts in the past 24 hours.';
       }
 
       final report = StringBuffer();
@@ -558,10 +558,10 @@ class DoctorChatProvider extends ChangeNotifier {
 
     if (target == null) {
       final names = _myPatients.isEmpty
-          ? 'No patients via prescriptions yet'
+          ? 'No patient via prescriptions yet'
           : _myPatients.map((p) => p.name).join(', ');
       return 'I couldn\'t identify which patient you\'re asking about. '
-          'Your patients (via prescriptions): $names. Could you specify?';
+          'Your patient (via prescriptions): $names. Could you specify?';
     }
 
     await _sendCheckStatusNotification(target);
@@ -592,7 +592,7 @@ class DoctorChatProvider extends ChangeNotifier {
 
       await NotificationService.sendPushToUser(
         userId: patient.id,
-        userCollection: 'patients',
+        userCollection: 'patient',
         title: '👨‍⚕️ Dr. ${_doctor!.name}',
         body: 'How are you feeling today?',
         channel: 'careloop_queue',
@@ -641,7 +641,7 @@ class DoctorChatProvider extends ChangeNotifier {
 
       await NotificationService.sendPushToUser(
         userId: target.id,
-        userCollection: 'patients',
+        userCollection: 'patient',
         title: '📅 Appointment Request — Dr. ${_doctor!.name}',
         body: message,
         channel: 'careloop_queue',
@@ -709,7 +709,7 @@ class DoctorChatProvider extends ChangeNotifier {
 
       await NotificationService.sendPushToUser(
         userId: target.id,
-        userCollection: 'patients',
+        userCollection: 'patient',
         title: '👨‍⚕️ Dr. ${_doctor!.name}',
         body: message,
         channel: 'careloop_queue',

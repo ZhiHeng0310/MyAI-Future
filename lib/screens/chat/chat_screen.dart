@@ -1025,7 +1025,7 @@ class _Bubble extends StatelessWidget {
       case 'appointment_confirmed': return '✅ Appointment confirmed';
       case 'book_appointment':      return '📅 Book appointment';
       case 'check_medications':     return '💊 Checking meds…';
-      case 'review_my_patients':    return '👥 Reviewing patients';
+      case 'review_my_patients':    return '👥 Reviewing patient';
       case 'send_patient_message':  return '✉️ Message sent';
       default:                      return a;
     }

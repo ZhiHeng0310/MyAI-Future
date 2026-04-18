@@ -100,8 +100,8 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                       const SizedBox(height: 12),
                       Text(
                         _query.isEmpty
-                            ? 'No patients registered yet.'
-                            : 'No patients match "$_query".',
+                            ? 'No patient registered yet.'
+                            : 'No patient match "$_query".',
                         style: GoogleFonts.dmSans(
                             color: const Color(0xFF667085)),
                       ),
@@ -556,8 +556,8 @@ class _PatientSearchScreenState extends State<_PatientSearchScreen> {
                         const SizedBox(height: 12),
                         Text(
                           _query.isEmpty
-                              ? 'No patients registered.'
-                              : 'No patients match "$_query".',
+                              ? 'No patient registered.'
+                              : 'No patient match "$_query".',
                           style: GoogleFonts.dmSans(
                               color: const Color(0xFF667085)),
                         ),

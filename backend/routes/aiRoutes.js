@@ -1,5 +1,7 @@
 // routes/aiRoutes.js
 // API routes for AI-powered features
+// routes/aiRoutes.js
+// API routes for AI-powered features
 
 import express from 'express';
 import { aiService } from '../services/aiService.js';
@@ -203,11 +205,12 @@ router.post('/send-summary-to-patient', async (req, res) => {
     await notificationRef.set({
       userId: patientId,
       title: '📋 New Health Report',
-      message: `Your body check report summary is ready. ${summaryData.risk_level === 'high' || summaryData.risk_level === 'critical' ? '⚠️ Please review it soon.' : ''}`,
-      type: 'report',
+      message: `Your body check report summary is ready. ${summaryData.risk_level === 'high' || summaryData.risk_level === 'critical' ? '⚠️ Please review it soon.' : 'Tap to view your report.'}`,
+      type: 'general', // Use general type for custom notifications
       isRead: false,
       timestamp: new Date().toISOString(),
       metadata: {
+        type: 'report_summary', // Custom type identifier
         summaryId: summaryId,
         inboxMessageId: inboxRef.id,
         riskLevel: summaryData.risk_level

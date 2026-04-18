@@ -222,7 +222,7 @@ class _DoctorChatScreenState extends State<DoctorChatScreen> {
 class _QuickPrompts extends StatelessWidget {
   final Function(String) onTap;
   static const _prompts = [
-    'How are my patients today?',
+    'How are my patient today?',
     'Check patient status',
     'Send appointment request',
     'Review recent alerts',
@@ -696,7 +696,7 @@ class _EmptyState extends StatelessWidget {
             style: GoogleFonts.poppins(
                 fontSize: 16, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
-        Text('Query patients, send messages, review alerts',
+        Text('Query patient, send messages, review alerts',
             style: GoogleFonts.dmSans(
                 color: const Color(0xFF667085), fontSize: 14)),
         const SizedBox(height: 8),

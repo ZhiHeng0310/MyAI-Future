@@ -42,7 +42,7 @@ class AuthProvider extends ChangeNotifier {
           Future(() async {
             try {
               await NotificationService.init();
-              final collection = _role == 'doctor' ? 'doctors' : 'patients';
+              final collection = _role == 'doctor' ? 'doctors' : 'patient';
               await NotificationService.saveFcmToken(u.uid, collection);
             } catch (e) {
               debugPrint('FCM token save non-critical error: $e');

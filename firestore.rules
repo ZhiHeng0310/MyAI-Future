@@ -64,12 +64,12 @@ service cloud.firestore {
     // ══════════════════════════════════════════════════════════════════════════
     match /patients/{userId} {
       allow read: if isPatient(userId) || isDoctorRole() || isDoctorUser();
-      allow create: if isSignedIn() && request.resource.data.id == request.auth.uid;
+      allow create: if isSignedIn() && request.auth.uid == userId;
       allow update: if isPatient(userId) || (
         (isDoctorRole() || isDoctorUser()) &&
         request.resource.data.assignedDoctorId == request.auth.uid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assignedDoctorId'])
-      );
+      ) || (isPatient(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmToken']));
       allow delete: if isPatient(userId);
     }
 
@@ -97,8 +97,8 @@ service cloud.firestore {
     // ══════════════════════════════════════════════════════════════════════════
     match /doctors/{docId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.id == request.auth.uid;
-      allow update: if isDoctor(docId);
+      allow create: if isSignedIn() && request.auth.uid == docId;
+      allow update: if isDoctor(docId) || (isDoctor(docId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmToken']));
       allow delete: if isDoctor(docId);
     }
 

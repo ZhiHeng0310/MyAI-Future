@@ -617,7 +617,7 @@ class ChatProvider extends ChangeNotifier {
     // FCM push (works when app is closed/background)
     await NotificationService.sendPushToUser(
       userId: _patient!.id,
-      userCollection: 'patients',
+      userCollection: 'patient',
       title: '✅ Appointment Confirmed!',
       body: 'Dr. ${doctor.name} — ${appt.dateLabel} at ${appt.timeSlot}',
       channel: 'careloop_queue',

@@ -94,7 +94,7 @@ class MedicationProvider extends ChangeNotifier {
           if (_patient != null) {
             NotificationService.sendPushToUser(
               userId:         _patient!.id,
-              userCollection: 'patients',
+              userCollection: 'patient',
               title:          '💊 Missed Medication',
               body:           'Time to take ${med.name} (${med.dosage}). You\'re 5 minutes late!',
               channel:        'careloop_meds',

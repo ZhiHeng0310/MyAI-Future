@@ -366,9 +366,9 @@ class GeminiService {
 
     // ── Doctor role ───────────────────────────────────────────────────────
     if (role == GeminiRole.doctor) {
-      if (lower.contains('how are my patients') ||
+      if (lower.contains('how are my patient') ||
           lower.contains('patient status') ||
-          lower.contains('my patients')) {
+          lower.contains('my patient')) {
         actions.add('review_my_patients');
       }
       if (lower.contains('recent alert') ||

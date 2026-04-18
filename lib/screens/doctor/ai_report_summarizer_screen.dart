@@ -96,7 +96,7 @@ class _AIReportSummarizerScreenState extends State<AIReportSummarizerScreen> {
             .toList();
       });
     } catch (e) {
-      print('❌ Error loading patients: $e');
+      print('❌ Error loading patient: $e');
     }
   }
 
