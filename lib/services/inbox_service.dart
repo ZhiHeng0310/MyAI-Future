@@ -30,6 +30,7 @@ class InboxService extends ChangeNotifier {
     _currentUserId = userId;
 
     debugPrint('🔔 InboxService: Starting listener for user $userId');
+    debugPrint('🔔 InboxService: Query: notifications.where(userId == $userId).orderBy(timestamp desc)');
 
     _firestore
         .collection('notifications')
@@ -40,15 +41,25 @@ class InboxService extends ChangeNotifier {
         .listen(
           (snapshot) {
         try {
-          debugPrint(
-              '🔔 InboxService: Received ${snapshot.docs.length} notifications');
+          debugPrint('🔔 InboxService: Received ${snapshot.docs.length} notifications');
+
+          // Debug: Print raw document data
+          if (snapshot.docs.isNotEmpty) {
+            debugPrint('🔔 InboxService: Sample notification data:');
+            final firstDoc = snapshot.docs.first;
+            debugPrint('   ID: ${firstDoc.id}');
+            debugPrint('   Data: ${firstDoc.data()}');
+          }
 
           _notifications = snapshot.docs
               .map((doc) {
             try {
-              return NotificationModel.fromFirestore(doc);
+              final notification = NotificationModel.fromFirestore(doc);
+              debugPrint('   ✅ Parsed: ${notification.title} (${notification.type})');
+              return notification;
             } catch (e) {
-              debugPrint('⚠️ Error parsing notification ${doc.id}: $e');
+              debugPrint('   ❌ Error parsing notification ${doc.id}: $e');
+              debugPrint('   ❌ Data: ${doc.data()}');
               return null;
             }
           })
@@ -60,19 +71,19 @@ class InboxService extends ChangeNotifier {
 
           debugPrint('🔔 InboxService: Parsed ${_notifications.length} notifications, Unread count = $_unreadCount');
 
-          // Log notification details for debugging
-          for (var notif in _notifications) {
-            debugPrint('  - ${notif.title} (read: ${notif.isRead})');
-          }
-
           notifyListeners();
           debugPrint('🔔 InboxService: notifyListeners() called');
         } catch (e) {
           debugPrint('❌ InboxService: Error processing notifications: $e');
+          debugPrint('❌ Stack trace: ${StackTrace.current}');
         }
       },
       onError: (error) {
         debugPrint('❌ InboxService: Stream error: $error');
+        if (error is FirebaseException) {
+          debugPrint('❌ Firebase error code: ${error.code}');
+          debugPrint('❌ Firebase error message: ${error.message}');
+        }
       },
     );
   }
@@ -485,5 +496,70 @@ class InboxService extends ChangeNotifier {
     final period = dt.hour >= 12 ? 'PM' : 'AM';
     final minute = dt.minute.toString().padLeft(2, '0');
     return '${months[dt.month - 1]} ${dt.day}, ${dt.year} at $hour:$minute $period';
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DEBUG/TEST FUNCTIONS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Create a test notification to verify the system is working
+  Future<void> createTestNotification(String userId) async {
+    try {
+      debugPrint('🧪 Creating test notification for user: $userId');
+
+      final testNotification = {
+        'userId': userId,
+        'title': '🧪 Test Notification',
+        'message': 'This is a test notification to verify the system is working',
+        'type': 'general',
+        'isRead': false,
+        'timestamp': FieldValue.serverTimestamp(),
+        'metadata': {
+          'type': 'test',
+          'testId': 'test_${DateTime.now().millisecondsSinceEpoch}',
+        }
+      };
+
+      final docRef = await _firestore
+          .collection('notifications')
+          .add(testNotification);
+
+      debugPrint('✅ Test notification created with ID: ${docRef.id}');
+      debugPrint('   UserId: $userId');
+      debugPrint('   Data: $testNotification');
+
+    } catch (e) {
+      debugPrint('❌ Error creating test notification: $e');
+      if (e is FirebaseException) {
+        debugPrint('   Code: ${e.code}');
+        debugPrint('   Message: ${e.message}');
+      }
+    }
+  }
+
+  /// Query notifications directly to verify they exist
+  Future<void> debugQueryNotifications(String userId) async {
+    try {
+      debugPrint('🔍 Debug: Querying notifications for user: $userId');
+
+      final snapshot = await _firestore
+          .collection('notifications')
+          .where('userId', isEqualTo: userId)
+          .get();
+
+      debugPrint('🔍 Debug: Found ${snapshot.docs.length} notifications');
+
+      for (var doc in snapshot.docs) {
+        debugPrint('   📋 ${doc.id}:');
+        debugPrint('      ${doc.data()}');
+      }
+
+    } catch (e) {
+      debugPrint('❌ Error querying notifications: $e');
+      if (e is FirebaseException) {
+        debugPrint('   Code: ${e.code}');
+        debugPrint('   Message: ${e.message}');
+      }
+    }
   }
 }
