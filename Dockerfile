@@ -6,7 +6,7 @@ COPY . .
 
 RUN flutter --version
 RUN flutter pub get
-RUN flutter build web
+RUN flutter build web --no-wasm-dry-run
 
 FROM nginx:alpine
 

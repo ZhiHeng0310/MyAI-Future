@@ -4,6 +4,7 @@
 // API routes for AI-powered features
 
 import express from 'express';
+import admin from 'firebase-admin';
 import { aiService } from '../services/aiService.js';
 import { getFirestore } from '../config/firebase.js';
 
@@ -208,7 +209,7 @@ router.post('/send-summary-to-patient', async (req, res) => {
       message: `Your body check report summary is ready. ${summaryData.risk_level === 'high' || summaryData.risk_level === 'critical' ? '⚠️ Please review it soon.' : 'Tap to view your report.'}`,
       type: 'general', // Use general type for custom notifications
       isRead: false,
-      timestamp: new Date().toISOString(),
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
       metadata: {
         type: 'report_summary', // Custom type identifier
         summaryId: summaryId,

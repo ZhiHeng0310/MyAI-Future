@@ -1,5 +1,6 @@
 // lib/models/notification_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 enum NotificationType {
   appointment,      // Appointment booked successfully
@@ -33,6 +34,27 @@ class NotificationModel {
   // Convert from Firestore
   factory NotificationModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+
+    // Parse timestamp - handle both Firestore Timestamp and ISO string
+    DateTime parsedTimestamp;
+    final timestampData = data['timestamp'];
+
+    if (timestampData is Timestamp) {
+      // Firestore Timestamp object
+      parsedTimestamp = timestampData.toDate();
+    } else if (timestampData is String) {
+      // ISO 8601 string
+      try {
+        parsedTimestamp = DateTime.parse(timestampData);
+      } catch (e) {
+        debugPrint('⚠️ Failed to parse timestamp string: $timestampData');
+        parsedTimestamp = DateTime.now();
+      }
+    } else {
+      // Fallback to current time
+      parsedTimestamp = DateTime.now();
+    }
+
     return NotificationModel(
       id: doc.id,
       userId: data['userId'] ?? '',
@@ -42,7 +64,7 @@ class NotificationModel {
             (e) => e.name == data['type'],
         orElse: () => NotificationType.general,
       ),
-      timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      timestamp: parsedTimestamp,
       isRead: data['isRead'] ?? false,
       metadata: data['metadata'] as Map<String, dynamic>?,
     );
