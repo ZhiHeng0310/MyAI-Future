@@ -74,6 +74,7 @@ class _InboxIconAnimatedState extends State<InboxIconAnimated>
   @override
   void initState() {
     super.initState();
+    debugPrint('📫 InboxIconAnimated: initState called');
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
@@ -87,7 +88,27 @@ class _InboxIconAnimatedState extends State<InboxIconAnimated>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    debugPrint('📫 InboxIconAnimated: didChangeDependencies called');
+    // Trigger a manual check of the inbox service state
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final inbox = Provider.of<InboxService>(context, listen: false);
+        debugPrint('📫 InboxIconAnimated: Manual check - ${inbox.notifications.length} total, ${inbox.unreadCount} unread');
+        // Force a rebuild by calling setState
+        if (mounted) {
+          setState(() {
+            // This will trigger a rebuild and the Consumer should pick up the latest state
+          });
+        }
+      }
+    });
+  }
+
+  @override
   void dispose() {
+    debugPrint('📫 InboxIconAnimated: dispose called');
     _controller.dispose();
     super.dispose();
   }
@@ -96,12 +117,16 @@ class _InboxIconAnimatedState extends State<InboxIconAnimated>
   Widget build(BuildContext context) {
     return Consumer<InboxService>(
       builder: (context, inbox, _) {
+        debugPrint('📫 InboxIconAnimated: Building with ${inbox.notifications.length} total, ${inbox.unreadCount} unread');
+        debugPrint('📫 InboxIconAnimated: hasUnread = ${inbox.hasUnread}');
+
         return Stack(
           children: [
             IconButton(
               icon: const Icon(Icons.notifications_outlined),
-              tooltip: 'Notifications',
+              tooltip: 'Notifications (${inbox.unreadCount})',
               onPressed: () {
+                debugPrint('📫 InboxIconAnimated: Tapped - navigating to inbox');
                 Navigator.pushNamed(context, '/inbox');
               },
             ),

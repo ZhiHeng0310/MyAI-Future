@@ -25,6 +25,8 @@ class InboxService extends ChangeNotifier {
   void startListening(String userId) {
     if (_currentUserId == userId) {
       debugPrint('🔔 InboxService: Already listening for user $userId');
+      // Force refresh to ensure UI is up to date
+      forceRefresh();
       return;
     }
     _currentUserId = userId;
