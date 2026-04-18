@@ -10,12 +10,14 @@ class InboxIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<InboxService>(
       builder: (context, inbox, _) {
+        debugPrint('📫 InboxIcon: Building with ${inbox.unreadCount} unread notifications');
         return Stack(
           children: [
             IconButton(
               icon: const Icon(Icons.notifications_outlined),
               tooltip: 'Notifications',
               onPressed: () {
+                debugPrint('📫 InboxIcon: Tapped - navigating to inbox');
                 Navigator.pushNamed(context, '/inbox');
               },
             ),

@@ -23,7 +23,10 @@ class InboxService extends ChangeNotifier {
   // ── Start listening ───────────────────────────────────────────────────────
 
   void startListening(String userId) {
-    if (_currentUserId == userId) return;
+    if (_currentUserId == userId) {
+      debugPrint('🔔 InboxService: Already listening for user $userId');
+      return;
+    }
     _currentUserId = userId;
 
     debugPrint('🔔 InboxService: Starting listener for user $userId');
@@ -34,19 +37,44 @@ class InboxService extends ChangeNotifier {
         .orderBy('timestamp', descending: true)
         .limit(100)
         .snapshots()
-        .listen((snapshot) {
-      debugPrint(
-          '🔔 InboxService: Received ${snapshot.docs.length} notifications');
+        .listen(
+          (snapshot) {
+        try {
+          debugPrint(
+              '🔔 InboxService: Received ${snapshot.docs.length} notifications');
 
-      _notifications = snapshot.docs
-          .map((doc) => NotificationModel.fromFirestore(doc))
-          .toList();
+          _notifications = snapshot.docs
+              .map((doc) {
+            try {
+              return NotificationModel.fromFirestore(doc);
+            } catch (e) {
+              debugPrint('⚠️ Error parsing notification ${doc.id}: $e');
+              return null;
+            }
+          })
+              .where((n) => n != null)
+              .cast<NotificationModel>()
+              .toList();
 
-      _unreadCount = _notifications.where((n) => !n.isRead).length;
+          _unreadCount = _notifications.where((n) => !n.isRead).length;
 
-      debugPrint('🔔 InboxService: Unread count = $_unreadCount');
-      notifyListeners();
-    });
+          debugPrint('🔔 InboxService: Parsed ${_notifications.length} notifications, Unread count = $_unreadCount');
+
+          // Log notification details for debugging
+          for (var notif in _notifications) {
+            debugPrint('  - ${notif.title} (read: ${notif.isRead})');
+          }
+
+          notifyListeners();
+          debugPrint('🔔 InboxService: notifyListeners() called');
+        } catch (e) {
+          debugPrint('❌ InboxService: Error processing notifications: $e');
+        }
+      },
+      onError: (error) {
+        debugPrint('❌ InboxService: Stream error: $error');
+      },
+    );
   }
 
   void stopListening() {
@@ -54,6 +82,44 @@ class InboxService extends ChangeNotifier {
     _notifications = [];
     _unreadCount = 0;
     notifyListeners();
+  }
+
+  // Force refresh notifications from Firestore
+  Future<void> forceRefresh() async {
+    if (_currentUserId == null) {
+      debugPrint('⚠️ InboxService: Cannot refresh - no user ID set');
+      return;
+    }
+
+    try {
+      debugPrint('🔄 InboxService: Force refreshing notifications for $_currentUserId');
+      final snapshot = await _firestore
+          .collection('notifications')
+          .where('userId', isEqualTo: _currentUserId)
+          .orderBy('timestamp', descending: true)
+          .limit(100)
+          .get();
+
+      _notifications = snapshot.docs
+          .map((doc) {
+        try {
+          return NotificationModel.fromFirestore(doc);
+        } catch (e) {
+          debugPrint('⚠️ Error parsing notification ${doc.id}: $e');
+          return null;
+        }
+      })
+          .where((n) => n != null)
+          .cast<NotificationModel>()
+          .toList();
+
+      _unreadCount = _notifications.where((n) => !n.isRead).length;
+
+      debugPrint('✅ InboxService: Force refresh complete - ${_notifications.length} notifications, $_unreadCount unread');
+      notifyListeners();
+    } catch (e) {
+      debugPrint('❌ InboxService: Force refresh error: $e');
+    }
   }
 
   // ── CRUD ──────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide debugPrint;
 import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
@@ -47,8 +47,13 @@ class _HomeScreenState extends State<HomeScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
 
+        debugPrint('🏠 HomeScreen: Initializing services for patient ${patient.id}');
+
         // Start inbox listener
-        context.read<InboxService>().startListening(patient.id);
+        final inboxService = context.read<InboxService>();
+        debugPrint('🏠 HomeScreen: Starting InboxService listener');
+        inboxService.startListening(patient.id);
+        debugPrint('🏠 HomeScreen: InboxService has ${inboxService.notifications.length} notifications');
 
         final queueProv       = context.read<QueueProvider>();
         final chatProv        = context.read<ChatProvider>();
@@ -67,6 +72,8 @@ class _HomeScreenState extends State<HomeScreen> {
         // after AI books an appointment it refreshes the stream
         chatProv.setAppointmentProvider(appointmentProv);
         chatProv.initSession(patient);
+
+        debugPrint('🏠 HomeScreen: All services initialized');
       });
     }
   }

@@ -24,6 +24,27 @@ class InboxScreen extends StatelessWidget {
         backgroundColor: Colors.teal,
         elevation: 0,
         actions: [
+          // Refresh button
+          Consumer<InboxService>(
+            builder: (context, inbox, _) {
+              return IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Refresh notifications',
+                onPressed: () async {
+                  await inbox.forceRefresh();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Notifications refreshed'),
+                        duration: Duration(seconds: 1),
+                      ),
+                    );
+                  }
+                },
+              );
+            },
+          ),
+
           // Mark all as read
           Consumer<InboxService>(
             builder: (context, inbox, _) {
@@ -63,6 +84,9 @@ class InboxScreen extends StatelessWidget {
       ),
       body: Consumer<InboxService>(
         builder: (context, inbox, _) {
+          // Add debugging
+          debugPrint('📱 InboxScreen: Rendering with ${inbox.notifications.length} notifications, ${inbox.unreadCount} unread');
+
           if (inbox.notifications.isEmpty) {
             return _buildEmptyState();
           }
@@ -72,6 +96,7 @@ class InboxScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemBuilder: (context, index) {
               final notification = inbox.notifications[index];
+              debugPrint('  📱 Rendering notification $index: ${notification.title}');
               return _NotificationTile(notification: notification);
             },
           );
