@@ -1,59 +1,102 @@
-# 🏥 CareLoop — AI Patient Care System
+# 🏥 CareLoop — AI-Powered Healthcare Ecosystem
 
-> Intelligent, agent-powered healthcare companion  
-> Built with **Flutter · Firebase · Gemini (Google AI)**
+> Bridging Patients, Doctors, and AI into one intelligent care loop
 
 ---
 
 ## 🚀 Overview
 
-CareLoop is an **AI-powered patient care platform** designed to improve:
-- 💊 Medication adherence
-- 🧠 Patient monitoring
-- ⏱️ Clinic queue management
-- 📅 Appointment handling
+CareLoop is a full-stack, AI-powered healthcare platform designed to improve:
 
-It acts as a **smart healthcare assistant** for both patients and providers, using **agentic AI workflows** to deliver real-time insights and support.
+- Patient self-care
+- Doctor efficiency
+- Clinic operations
 
----
-
-## ✨ Key Features
-
-### 🤖 AI Patient Assistant (Gemini-powered)
-- Daily health check-ins
-- Medication reminders based on time
-- Risk detection (low / medium / high)
-- Safe responses (no diagnosis, escalation-aware)
-
-### 💊 Medication Adherence Tracker
-- Tracks taken / missed medications
-- Smart reminders based on schedule
-- Time-aware logic (past vs upcoming meds)
-
-### 🏥 Smart Queue System
-- Real-time clinic queue tracking
-- Reduces patient waiting uncertainty
-- Efficient patient flow management
-
-### 📅 Appointment Management
-- Book and manage appointments
-- Calendar-based scheduling UI
-- Linked with patient records
-
-### 🔥 Firebase Backend
-- Authentication (Login/Register)
-- Firestore real-time database
-- Scalable backend for healthcare data
+It features a **dual-AI system**:
+- 🤖 Patient AI Assistant
+- 🧑‍⚕️ Doctor AI Assistant Tools
 
 ---
 
-## 🧠 AI Design (Gemini Flash)
+## 🎯 Core Problem
 
-CareLoop uses **Gemini Flash** with optimized prompts:
+- Patients not following treatments
+- Doctors overloaded with repetitive analysis
+- Lack of real-time patient insights
+- Inefficient clinic workflows
+
+---
+
+## 💡 Solution
+
+- AI-assisted patient monitoring
+- AI-powered doctor decision support
+- Real-time automation
+- Smart communication
+
+---
+
+## ✨ Features
+
+### 👤 Patient Side
+- AI bill analyze
+- AI health assistant
+- Medication tracking
+- Smart notifications
+- Queue system
+- Appointment booking
+
+### 🧑‍⚕️ Doctor AI Tools
+- AI Risk Detection
+- AI Report Generator
+- AI Medical Chat Assistant
+- AI Alert System
+- Doctor Dashboard
+
+---
+
+## 🧠 AI Response Format
 
 ```json
 {
-  "message": "short patient-friendly response",
+  "message": "Clear response",
   "risk": "low | medium | high",
-  "actions": ["suggestion1", "suggestion2"]
+  "actions": ["action1", "action2"]
 }
+```
+
+---
+
+## 🏗️ Tech Stack
+
+- Flutter (Frontend)
+- Node.js + Express (Backend)
+- Firebase (Auth + Firestore)
+- Google Gemini AI
+
+---
+
+## ⚙️ Setup
+
+Refer to SETUP.nd
+
+---
+
+## 🔐 Security
+
+- Backend API key protection
+- Non-diagnostic AI
+- Input validation
+
+---
+
+## 🚀 Deployment
+
+- Backend: Google Cloud Run
+- Frontend: Google Cloud Run
+
+---
+
+## 📜 License
+
+MIT License
