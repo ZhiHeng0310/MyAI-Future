@@ -40,7 +40,7 @@ void main() async {
 
   // ── Init notifications ──────────────────────────────────────────
   await NotificationService.init();
-  await dotenv.load(fileName: ".env");
+  await dotenv.load(fileName: "assets/.env");
 
   runApp(const CareLoopApp());
 }
