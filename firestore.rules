@@ -74,6 +74,18 @@ service cloud.firestore {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
+    // PATIENT COLLECTION (Alternative name used in some parts)
+    // ══════════════════════════════════════════════════════════════════════════
+    match /patient/{userId} {
+      allow read: if isPatient(userId) || isDoctorRole() || isDoctorUser();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isPatient(userId) || (
+        (isDoctorRole() || isDoctorUser())
+      ) || (isPatient(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmToken']));
+      allow delete: if isPatient(userId);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
     // NESTED PATIENT MEDICATIONS
     // ══════════════════════════════════════════════════════════════════════════
     match /patients/{patientId}/medications/{medId} {
@@ -127,6 +139,34 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasAny(['takenSlots', 'lastTaken'])
       );
       allow delete: if isDoctorRole() || isDoctorUser();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // MEDICATION LOGS (for tracking doses taken)
+    // ══════════════════════════════════════════════════════════════════════════
+    match /medication_logs/{logId} {
+      allow create: if isSignedIn() && request.resource.data.patientId == request.auth.uid;
+      allow read: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        resource.data.doctorId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
+      allow update, delete: if isDoctorRole() || isDoctorUser();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // DOSE LOGS (alternative medication tracking)
+    // ══════════════════════════════════════════════════════════════════════════
+    match /dose_logs/{logId} {
+      allow create: if isSignedIn() && request.resource.data.patientId == request.auth.uid;
+      allow read: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        resource.data.doctorId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
+      allow update, delete: if isDoctorRole() || isDoctorUser();
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -205,22 +245,23 @@ service cloud.firestore {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // DOSE LOGS COLLECTION
+    // BILL ANALYSES COLLECTION (AI bill analyzer feature)
     // ══════════════════════════════════════════════════════════════════════════
-    match /dose_logs/{logId} {
-      allow create: if isSignedIn() && request.resource.data.patientId == request.auth.uid;
+    match /bill_analyses/{billId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow read: if isSignedIn() && (
-        resource.data.patientId == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
         isDoctorRole() ||
         isDoctorUser()
       );
-      allow update, delete: if false;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // MEDICATION LOGS COLLECTION
+    // BODY CHECK DATA COLLECTION
     // ══════════════════════════════════════════════════════════════════════════
-    match /medication_logs/{logId} {
+    match /body_check_data/{checkId} {
       allow create: if isSignedIn() && request.resource.data.patientId == request.auth.uid;
       allow read: if isSignedIn() && (
         resource.data.patientId == request.auth.uid ||
@@ -301,13 +342,41 @@ service cloud.firestore {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
+    // APPOINTMENT REQUESTS (Created by AI or backend services)
+    // ══════════════════════════════════════════════════════════════════════════
+    match /appointment_requests/{requestId} {
+      allow create: if isSignedIn();
+      allow read: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        resource.data.doctorId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser() ||
+        isStaff()
+      );
+      allow update: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser() ||
+        isStaff()
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.patientId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser() ||
+        isStaff()
+      );
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
     // APPOINTMENTS (nested slots under doctor)
     // ══════════════════════════════════════════════════════════════════════════
     match /appointments/{doctorId}/slots/{slotId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() &&
-        request.resource.data.doctorId == doctorId &&
-        request.resource.data.patientId == request.auth.uid;
+      allow create: if isSignedIn() && (
+        request.resource.data.patientId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
       allow update: if isSignedIn() && (
         resource.data.patientId == request.auth.uid ||
         isDoctor(doctorId) ||
@@ -412,6 +481,20 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow update: if isSignedIn();
       allow delete: if false;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // CHAT LOGS (for AI chat tracking and analytics)
+    // ══════════════════════════════════════════════════════════════════════════
+    match /chat_logs/{logId} {
+      allow create: if isSignedIn();
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
+      allow update: if isDoctorRole() || isDoctorUser();
+      allow delete: if isDoctorRole() || isDoctorUser();
     }
 
     // ══════════════════════════════════════════════════════════════════════════
