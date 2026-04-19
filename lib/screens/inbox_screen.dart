@@ -84,22 +84,49 @@ class InboxScreen extends StatelessWidget {
       ),
       body: Consumer<InboxService>(
         builder: (context, inbox, _) {
-          // Add debugging
-          debugPrint('📱 InboxScreen: Rendering with ${inbox.notifications.length} notifications, ${inbox.unreadCount} unread');
+          try {
+            // Add debugging
+            debugPrint('📱 InboxScreen: Rendering with ${inbox.notifications.length} notifications, ${inbox.unreadCount} unread');
 
-          if (inbox.notifications.isEmpty) {
-            return _buildEmptyState();
+            if (inbox.notifications.isEmpty) {
+              return _buildEmptyState();
+            }
+
+            return ListView.builder(
+              itemCount: inbox.notifications.length,
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemBuilder: (context, index) {
+                try {
+                  final notification = inbox.notifications[index];
+                  debugPrint('  📱 Rendering notification $index: ${notification.title}');
+                  return _NotificationTile(notification: notification);
+                } catch (e, stackTrace) {
+                  debugPrint('❌ Error rendering notification $index: $e');
+                  debugPrint('Stack: $stackTrace');
+                  // Return empty widget instead of crashing
+                  return const SizedBox.shrink();
+                }
+              },
+            );
+          } catch (e, stackTrace) {
+            debugPrint('❌ Critical error in InboxScreen: $e');
+            debugPrint('Stack: $stackTrace');
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 60, color: Colors.red),
+                  const SizedBox(height: 16),
+                  const Text('Error loading notifications'),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    onPressed: () => inbox.forceRefresh(),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
           }
-
-          return ListView.builder(
-            itemCount: inbox.notifications.length,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemBuilder: (context, index) {
-              final notification = inbox.notifications[index];
-              debugPrint('  📱 Rendering notification $index: ${notification.title}');
-              return _NotificationTile(notification: notification);
-            },
-          );
         },
       ),
     );
@@ -186,6 +213,12 @@ class _NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Defensive: Ensure notification has valid data
+    if (notification.title.isEmpty && notification.message.isEmpty) {
+      debugPrint('⚠️ Skipping empty notification ${notification.id}');
+      return const SizedBox.shrink();
+    }
+
     final accentColor = _getAccentColor();
 
     return Dismissible(
@@ -280,7 +313,9 @@ class _NotificationTile extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: Text(
-                                  notification.title,
+                                  notification.title.isNotEmpty
+                                      ? notification.title
+                                      : 'Notification',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: notification.isRead
@@ -288,8 +323,11 @@ class _NotificationTile extends StatelessWidget {
                                         : FontWeight.bold,
                                     color: Colors.black87,
                                   ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
+                              const SizedBox(width: 8),
                               Text(
                                 notification.relativeTime,
                                 style: TextStyle(
@@ -301,12 +339,16 @@ class _NotificationTile extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            notification.message,
+                            notification.message.isNotEmpty
+                                ? notification.message
+                                : 'No message',
                             style: TextStyle(
                               fontSize: 14,
                               color: Colors.grey.shade700,
                               height: 1.4,
                             ),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           if (_isAppointmentRequest()) ...[
                             const SizedBox(height: 14),
@@ -342,169 +384,196 @@ class _NotificationTile extends StatelessWidget {
   }
 
   bool _isAppointmentRequest() {
-    return notification.type == NotificationType.appointment &&
-        notification.metadata?['action'] == 'open_appointments' &&
-        notification.metadata?['doctorId'] != null &&
-        notification.metadata?['requestMessage'] != null;
+    try {
+      return notification.type == NotificationType.appointment &&
+          notification.metadata != null &&
+          notification.metadata!['action'] == 'open_appointments' &&
+          notification.metadata!['doctorId'] != null &&
+          notification.metadata!['requestMessage'] != null;
+    } catch (e) {
+      debugPrint('⚠️ Error checking appointment request: $e');
+      return false;
+    }
   }
 
   Future<void> _acceptAppointmentRequest(BuildContext context) async {
-    final doctorId = notification.metadata?['doctorId'] as String?;
-    final doctorName = notification.metadata?['doctorName'] as String?;
-    final requestMessage = notification.metadata?['requestMessage'] as String?;
-    final patient = Provider.of<AuthProvider>(context, listen: false).patient;
+    try {
+      final doctorId = notification.metadata?['doctorId'] as String?;
+      final doctorName = notification.metadata?['doctorName'] as String?;
+      final requestMessage = notification.metadata?['requestMessage'] as String?;
+      final patient = Provider.of<AuthProvider>(context, listen: false).patient;
 
-    if (doctorId == null || patient == null) {
+      if (doctorId == null || patient == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to open booking at this time.')),
+        );
+        return;
+      }
+
+      final doctor = await FirestoreService().getDoctor(doctorId);
+      if (doctor == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Doctor information could not be loaded.')),
+        );
+        return;
+      }
+
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => AppointmentBookingScreen(
+          doctor: doctor,
+          patient: patient,
+          initialSymptoms: requestMessage != null && requestMessage.isNotEmpty
+              ? [requestMessage]
+              : [],
+        ),
+      ));
+    } catch (e) {
+      debugPrint('❌ Error accepting appointment request: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open booking at this time.')),
+        SnackBar(content: Text('Error: ${e.toString()}')),
       );
-      return;
     }
-
-    final doctor = await FirestoreService().getDoctor(doctorId);
-    if (doctor == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Doctor information could not be loaded.')),
-      );
-      return;
-    }
-
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AppointmentBookingScreen(
-        doctor: doctor,
-        patient: patient,
-        initialSymptoms: requestMessage != null && requestMessage.isNotEmpty
-            ? [requestMessage]
-            : [],
-      ),
-    ));
   }
 
   Future<void> _rejectAppointmentRequest(BuildContext context) async {
-    final doctorId = notification.metadata?['doctorId'] as String?;
-    final doctorName = notification.metadata?['doctorName'] as String?;
-    final patient = Provider.of<AuthProvider>(context, listen: false).patient;
+    try {
+      final doctorId = notification.metadata?['doctorId'] as String?;
+      final doctorName = notification.metadata?['doctorName'] as String?;
+      final patient = Provider.of<AuthProvider>(context, listen: false).patient;
 
-    if (doctorId == null || patient == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to send rejection.')),
+      if (doctorId == null || patient == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to send rejection.')),
+        );
+        return;
+      }
+
+      await InboxService.sendAppointmentUpdateNotification(
+        userId: doctorId,
+        title: '❌ Appointment Request Declined',
+        message:
+        '${patient.name} declined the appointment request from Dr. ${doctorName ?? 'your doctor'}.',
       );
-      return;
+
+      await NotificationService.sendPushToUser(
+        userId:         doctorId,
+        userCollection: 'doctors',
+        title:          '❌ Appointment Request Declined',
+        body:           '${patient.name} declined your appointment request.',
+        channel:        'careloop_queue',
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Your rejection was sent to the doctor.')),
+      );
+    } catch (e) {
+      debugPrint('❌ Error rejecting appointment request: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
     }
-
-    await InboxService.sendAppointmentUpdateNotification(
-      userId: doctorId,
-      title: '❌ Appointment Request Declined',
-      message:
-      '${patient.name} declined the appointment request from Dr. ${doctorName ?? 'your doctor'}.',
-    );
-
-    await NotificationService.sendPushToUser(
-      userId:         doctorId,
-      userCollection: 'doctors',
-      title:          '❌ Appointment Request Declined',
-      body:           '${patient.name} declined your appointment request.',
-      channel:        'careloop_queue',
-    );
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Your rejection was sent to the doctor.')),
-    );
   }
 
   void _handleNotificationTap(BuildContext context) {
-    // Handle report summary notifications
-    if (notification.type == NotificationType.general &&
-        notification.metadata?['type'] == 'report_summary') {
-      _handleReportSummaryNotification(context);
-      return;
-    }
+    try {
+      // Handle report summary notifications
+      if (notification.type == NotificationType.general &&
+          notification.metadata?['type'] == 'report_summary') {
+        _handleReportSummaryNotification(context);
+        return;
+      }
 
-    // Handle navigation based on notification type
-    if (_isAppointmentRequest()) {
-      _showAppointmentRequestDialog(context);
-      return;
-    }
+      // Handle navigation based on notification type
+      if (_isAppointmentRequest()) {
+        _showAppointmentRequestDialog(context);
+        return;
+      }
 
-    switch (notification.type) {
-      case NotificationType.appointment:
-      // Navigate to appointments
-        if (notification.metadata?['appointmentId'] != null) {
-          Navigator.pushNamed(
-            context,
-            '/appointment-details',
-            arguments: notification.metadata!['appointmentId'],
-          );
-          return;
-        }
-        if (notification.metadata?['action'] == 'open_appointments') {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 4)),
-          );
-        }
-        break;
-      case NotificationType.medication:
-        if (notification.metadata?['action'] == 'open_medications') {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 3)),
-          );
-        } else {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 3)),
-          );
-        }
-        break;
-      case NotificationType.queue:
-        if (notification.metadata?['action'] == 'open_appointments') {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 4)),
-          );
-        } else {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 1)),
-          );
-        }
-        break;
-      case NotificationType.doctor:
-        if (notification.metadata?['action'] == 'open_appointments') {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 4)),
-          );
-        } else {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 2)),
-          );
-        }
-        break;
-      case NotificationType.general:
-      // No specific action
-        break;
+      switch (notification.type) {
+        case NotificationType.appointment:
+        // Navigate to appointments
+          if (notification.metadata?['appointmentId'] != null) {
+            Navigator.pushNamed(
+              context,
+              '/appointment-details',
+              arguments: notification.metadata!['appointmentId'],
+            );
+            return;
+          }
+          if (notification.metadata?['action'] == 'open_appointments') {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 4)),
+            );
+          }
+          break;
+        case NotificationType.medication:
+          if (notification.metadata?['action'] == 'open_medications') {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 3)),
+            );
+          } else {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 3)),
+            );
+          }
+          break;
+        case NotificationType.queue:
+          if (notification.metadata?['action'] == 'open_appointments') {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 4)),
+            );
+          } else {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 1)),
+            );
+          }
+          break;
+        case NotificationType.doctor:
+          if (notification.metadata?['action'] == 'open_appointments') {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 4)),
+            );
+          } else {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HomeScreen(initialIndex: 2)),
+            );
+          }
+          break;
+        case NotificationType.general:
+        // No specific action
+          break;
+      }
+    } catch (e) {
+      debugPrint('❌ Error handling notification tap: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open notification')),
+      );
     }
   }
 
   Future<void> _handleReportSummaryNotification(BuildContext context) async {
-    final summaryId = notification.metadata?['summaryId'];
+    try {
+      final summaryId = notification.metadata?['summaryId'];
 
-    if (summaryId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Report data not found'),
-          backgroundColor: Colors.red,
+      if (summaryId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Report data not found'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
         ),
       );
-      return;
-    }
 
-    // Show loading
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
-
-    try {
       // Fetch the summary from Firestore
       final summaryDoc = await FirebaseFirestore.instance
           .collection('report_summaries')
@@ -542,6 +611,7 @@ class _NotificationTile extends StatelessWidget {
         );
       }
     } catch (e) {
+      debugPrint('❌ Error loading report: $e');
       // Close loading
       if (context.mounted) Navigator.pop(context);
 

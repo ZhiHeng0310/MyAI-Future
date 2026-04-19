@@ -45,39 +45,45 @@ class InboxService extends ChangeNotifier {
         try {
           debugPrint('🔔 InboxService: Received ${snapshot.docs.length} notifications');
 
-          // Debug: Print raw document data
+          // Debug: Print raw document data for first few notifications
           if (snapshot.docs.isNotEmpty) {
-            debugPrint('🔔 InboxService: Sample notification data:');
-            final firstDoc = snapshot.docs.first;
-            debugPrint('   ID: ${firstDoc.id}');
-            debugPrint('   Data: ${firstDoc.data()}');
+            debugPrint('🔔 InboxService: First ${snapshot.docs.length > 3 ? 3 : snapshot.docs.length} notification samples:');
+            for (var i = 0; i < snapshot.docs.length && i < 3; i++) {
+              final doc = snapshot.docs[i];
+              debugPrint('   [$i] ID: ${doc.id}');
+              debugPrint('   [$i] Data: ${doc.data()}');
+            }
           }
 
-          _notifications = snapshot.docs
-              .map((doc) {
+          final parsedNotifications = <NotificationModel>[];
+          int parseErrors = 0;
+
+          for (var doc in snapshot.docs) {
             try {
               final notification = NotificationModel.fromFirestore(doc);
-              debugPrint('   ✅ Parsed: ${notification.title} (${notification.type})');
-              return notification;
-            } catch (e) {
+              parsedNotifications.add(notification);
+            } catch (e, stackTrace) {
+              parseErrors++;
               debugPrint('   ❌ Error parsing notification ${doc.id}: $e');
               debugPrint('   ❌ Data: ${doc.data()}');
-              return null;
+              debugPrint('   ❌ Stack: ${stackTrace.toString().split('\n').take(3).join('\n')}');
             }
-          })
-              .where((n) => n != null)
-              .cast<NotificationModel>()
-              .toList();
+          }
 
+          _notifications = parsedNotifications;
           _unreadCount = _notifications.where((n) => !n.isRead).length;
 
-          debugPrint('🔔 InboxService: Parsed ${_notifications.length} notifications, Unread count = $_unreadCount');
+          debugPrint('🔔 InboxService: Successfully parsed ${_notifications.length}/${snapshot.docs.length} notifications');
+          if (parseErrors > 0) {
+            debugPrint('⚠️ InboxService: Failed to parse $parseErrors notifications');
+          }
+          debugPrint('🔔 InboxService: Unread count = $_unreadCount');
 
           notifyListeners();
           debugPrint('🔔 InboxService: notifyListeners() called');
-        } catch (e) {
+        } catch (e, stackTrace) {
           debugPrint('❌ InboxService: Error processing notifications: $e');
-          debugPrint('❌ Stack trace: ${StackTrace.current}');
+          debugPrint('❌ Stack trace: $stackTrace');
         }
       },
       onError: (error) {
@@ -113,25 +119,35 @@ class InboxService extends ChangeNotifier {
           .limit(100)
           .get();
 
-      _notifications = snapshot.docs
-          .map((doc) {
-        try {
-          return NotificationModel.fromFirestore(doc);
-        } catch (e) {
-          debugPrint('⚠️ Error parsing notification ${doc.id}: $e');
-          return null;
-        }
-      })
-          .where((n) => n != null)
-          .cast<NotificationModel>()
-          .toList();
+      debugPrint('🔄 InboxService: Fetched ${snapshot.docs.length} notifications');
 
+      final parsedNotifications = <NotificationModel>[];
+      int parseErrors = 0;
+
+      for (var doc in snapshot.docs) {
+        try {
+          final notification = NotificationModel.fromFirestore(doc);
+          parsedNotifications.add(notification);
+        } catch (e, stackTrace) {
+          parseErrors++;
+          debugPrint('⚠️ Error parsing notification ${doc.id}: $e');
+          debugPrint('   Data: ${doc.data()}');
+        }
+      }
+
+      _notifications = parsedNotifications;
       _unreadCount = _notifications.where((n) => !n.isRead).length;
 
-      debugPrint('✅ InboxService: Force refresh complete - ${_notifications.length} notifications, $_unreadCount unread');
+      debugPrint('✅ InboxService: Force refresh complete - ${_notifications.length}/${snapshot.docs.length} notifications parsed successfully');
+      if (parseErrors > 0) {
+        debugPrint('⚠️ InboxService: Failed to parse $parseErrors notifications');
+      }
+      debugPrint('✅ InboxService: Unread count = $_unreadCount');
+
       notifyListeners();
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ InboxService: Force refresh error: $e');
+      debugPrint('❌ Stack trace: $stackTrace');
     }
   }
 
