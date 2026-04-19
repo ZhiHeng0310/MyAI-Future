@@ -85,32 +85,55 @@ class InboxScreen extends StatelessWidget {
       body: Consumer<InboxService>(
         builder: (context, inbox, _) {
           try {
-            // Add debugging
-            debugPrint('📱 InboxScreen: Rendering with ${inbox.notifications.length} notifications, ${inbox.unreadCount} unread');
+            debugPrint('📱 InboxScreen: Rendering ${inbox.notifications.length} notifications');
 
             if (inbox.notifications.isEmpty) {
-              return _buildEmptyState();
+              return Column(
+                children: [
+                  _buildEmptyState(),
+                  // Add refresh button in empty state
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        await inbox.forceRefresh();
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Refreshed from server'),
+                              duration: Duration(seconds: 1),
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Refresh Notifications'),
+                    ),
+                  ),
+                ],
+              );
             }
 
-            return ListView.builder(
-              itemCount: inbox.notifications.length,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemBuilder: (context, index) {
-                try {
-                  final notification = inbox.notifications[index];
-                  debugPrint('  📱 Rendering notification $index: ${notification.title}');
-                  return _NotificationTile(notification: notification);
-                } catch (e, stackTrace) {
-                  debugPrint('❌ Error rendering notification $index: $e');
-                  debugPrint('Stack: $stackTrace');
-                  // Return empty widget instead of crashing
-                  return const SizedBox.shrink();
-                }
+            return RefreshIndicator(
+              onRefresh: () async {
+                await inbox.forceRefresh();
               },
+              child: ListView.builder(
+                itemCount: inbox.notifications.length,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemBuilder: (context, index) {
+                  try {
+                    final notification = inbox.notifications[index];
+                    return _NotificationTile(notification: notification);
+                  } catch (e) {
+                    debugPrint('❌ Error rendering notification $index: $e');
+                    return const SizedBox.shrink(); // Skip broken notifications
+                  }
+                },
+              ),
             );
           } catch (e, stackTrace) {
             debugPrint('❌ Critical error in InboxScreen: $e');
-            debugPrint('Stack: $stackTrace');
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -119,9 +142,10 @@ class InboxScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   const Text('Error loading notifications'),
                   const SizedBox(height: 8),
-                  ElevatedButton(
+                  ElevatedButton.icon(
                     onPressed: () => inbox.forceRefresh(),
-                    child: const Text('Retry'),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry from Server'),
                   ),
                 ],
               ),

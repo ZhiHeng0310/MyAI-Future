@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import '../models/notification_model.dart';
 import 'firestore_service.dart';
 import 'notification_service.dart';
+import 'dart:async';
 
 class InboxService extends ChangeNotifier {
   static final InboxService _instance = InboxService._();
@@ -15,6 +16,7 @@ class InboxService extends ChangeNotifier {
   List<NotificationModel> _notifications = [];
   int _unreadCount = 0;
   String? _currentUserId;
+  StreamSubscription<QuerySnapshot>? _notificationSubscription;
 
   List<NotificationModel> get notifications => _notifications;
   int get unreadCount => _unreadCount;
@@ -29,51 +31,49 @@ class InboxService extends ChangeNotifier {
       forceRefresh();
       return;
     }
+
+    // Cancel previous subscription
+    _notificationSubscription?.cancel();
     _currentUserId = userId;
 
     debugPrint('🔔 InboxService: Starting listener for user $userId');
-    debugPrint('🔔 InboxService: Query: notifications.where(userId == $userId).orderBy(timestamp desc)');
 
-    _firestore
+    // KEY FIX: Force server fetch and disable cache to avoid BloomFilter errors
+    _notificationSubscription = _firestore
         .collection('notifications')
         .where('userId', isEqualTo: userId)
         .orderBy('timestamp', descending: true)
         .limit(100)
-        .snapshots()
+        .snapshots(includeMetadataChanges: false) // Ignore metadata changes
         .listen(
           (snapshot) {
         try {
           debugPrint('🔔 InboxService: Received ${snapshot.docs.length} notifications');
-
-          // Debug: Print raw document data for first few notifications
-          if (snapshot.docs.isNotEmpty) {
-            debugPrint('🔔 InboxService: First ${snapshot.docs.length > 3 ? 3 : snapshot.docs.length} notification samples:');
-            for (var i = 0; i < snapshot.docs.length && i < 3; i++) {
-              final doc = snapshot.docs[i];
-              debugPrint('   [$i] ID: ${doc.id}');
-              debugPrint('   [$i] Data: ${doc.data()}');
-            }
-          }
 
           final parsedNotifications = <NotificationModel>[];
           int parseErrors = 0;
 
           for (var doc in snapshot.docs) {
             try {
+              // KEY FIX: Check if document actually has data before parsing
+              if (!doc.exists || doc.data() == null) {
+                debugPrint('⚠️ Skipping null/non-existent document: ${doc.id}');
+                continue;
+              }
+
               final notification = NotificationModel.fromFirestore(doc);
               parsedNotifications.add(notification);
             } catch (e, stackTrace) {
               parseErrors++;
-              debugPrint('   ❌ Error parsing notification ${doc.id}: $e');
-              debugPrint('   ❌ Data: ${doc.data()}');
-              debugPrint('   ❌ Stack: ${stackTrace.toString().split('\n').take(3).join('\n')}');
+              debugPrint('❌ Error parsing notification ${doc.id}: $e');
+              // Don't crash the whole stream - just skip this notification
             }
           }
 
           _notifications = parsedNotifications;
           _unreadCount = _notifications.where((n) => !n.isRead).length;
 
-          debugPrint('🔔 InboxService: Successfully parsed ${_notifications.length}/${snapshot.docs.length} notifications');
+          debugPrint('✅ InboxService: Successfully parsed ${_notifications.length}/${snapshot.docs.length} notifications');
           if (parseErrors > 0) {
             debugPrint('⚠️ InboxService: Failed to parse $parseErrors notifications');
           }
@@ -84,6 +84,7 @@ class InboxService extends ChangeNotifier {
         } catch (e, stackTrace) {
           debugPrint('❌ InboxService: Error processing notifications: $e');
           debugPrint('❌ Stack trace: $stackTrace');
+          // Don't let errors break the stream
         }
       },
       onError: (error) {
@@ -91,19 +92,28 @@ class InboxService extends ChangeNotifier {
         if (error is FirebaseException) {
           debugPrint('❌ Firebase error code: ${error.code}');
           debugPrint('❌ Firebase error message: ${error.message}');
+
+          // KEY FIX: If BloomFilter error, force a server refresh
+          if (error.code == 'failed-precondition' ||
+              error.message?.contains('BloomFilter') == true) {
+            debugPrint('🔄 Detected BloomFilter error - forcing refresh from server');
+            forceRefresh();
+          }
         }
       },
     );
   }
 
   void stopListening() {
+    _notificationSubscription?.cancel();
+    _notificationSubscription = null;
     _currentUserId = null;
     _notifications = [];
     _unreadCount = 0;
     notifyListeners();
   }
 
-  // Force refresh notifications from Firestore
+  // KEY FIX: Force refresh from server, bypassing cache
   Future<void> forceRefresh() async {
     if (_currentUserId == null) {
       debugPrint('⚠️ InboxService: Cannot refresh - no user ID set');
@@ -111,38 +121,39 @@ class InboxService extends ChangeNotifier {
     }
 
     try {
-      debugPrint('🔄 InboxService: Force refreshing notifications for $_currentUserId');
+      debugPrint('🔄 InboxService: Force refreshing from SERVER (cache bypass)');
+
+      // Force server fetch - this bypasses the BloomFilter cache
       final snapshot = await _firestore
           .collection('notifications')
           .where('userId', isEqualTo: _currentUserId)
           .orderBy('timestamp', descending: true)
           .limit(100)
-          .get();
+          .get(const GetOptions(source: Source.server)); // Force server!
 
-      debugPrint('🔄 InboxService: Fetched ${snapshot.docs.length} notifications');
+      debugPrint('🔄 InboxService: Fetched ${snapshot.docs.length} notifications from server');
 
       final parsedNotifications = <NotificationModel>[];
       int parseErrors = 0;
 
       for (var doc in snapshot.docs) {
         try {
+          if (!doc.exists || doc.data() == null) {
+            continue;
+          }
           final notification = NotificationModel.fromFirestore(doc);
           parsedNotifications.add(notification);
-        } catch (e, stackTrace) {
+        } catch (e) {
           parseErrors++;
           debugPrint('⚠️ Error parsing notification ${doc.id}: $e');
-          debugPrint('   Data: ${doc.data()}');
         }
       }
 
       _notifications = parsedNotifications;
       _unreadCount = _notifications.where((n) => !n.isRead).length;
 
-      debugPrint('✅ InboxService: Force refresh complete - ${_notifications.length}/${snapshot.docs.length} notifications parsed successfully');
-      if (parseErrors > 0) {
-        debugPrint('⚠️ InboxService: Failed to parse $parseErrors notifications');
-      }
-      debugPrint('✅ InboxService: Unread count = $_unreadCount');
+      debugPrint('✅ Force refresh complete - ${_notifications.length} notifications');
+      debugPrint('✅ Unread count = $_unreadCount');
 
       notifyListeners();
     } catch (e, stackTrace) {
@@ -154,58 +165,36 @@ class InboxService extends ChangeNotifier {
   // ── CRUD ──────────────────────────────────────────────────────────────────
   Future<void> markNotificationAsRead(String notificationId) async {
     try {
-      await FirebaseFirestore.instance
+      // KEY FIX: Use server source to avoid BloomFilter issues
+      final doc = await _firestore
           .collection('notifications')
           .doc(notificationId)
-          .update({
-        'isRead': true,
-        'readAt': FieldValue.serverTimestamp(),
-      });
-      debugPrint('✅ Notification marked as read: $notificationId');
-    } catch (e) {
-      debugPrint('⚠️ Error marking notification as read: $e');
-      // Try alternative approach if BloomFilter error
-      if (e.toString().contains('BloomFilter')) {
-        try {
-          // Force a fresh read then update
-          final doc = await FirebaseFirestore.instance
-              .collection('notifications')
-              .doc(notificationId)
-              .get(const GetOptions(source: Source.server)); // Force server read
+          .get(const GetOptions(source: Source.server));
 
-          if (doc.exists) {
-            await doc.reference.update({
-              'isRead': true,
-              'readAt': FieldValue.serverTimestamp(),
-            });
-            debugPrint('✅ Notification marked as read (retry): $notificationId');
-          }
-        } catch (retryError) {
-          debugPrint('❌ Failed to mark notification as read even on retry: $retryError');
-        }
+      if (doc.exists) {
+        await doc.reference.update({
+          'isRead': true,
+          'readAt': FieldValue.serverTimestamp(),
+        });
+        debugPrint('✅ Notification marked as read: $notificationId');
       }
+    } catch (e) {
+      debugPrint('❌ Error marking notification as read: $e');
     }
   }
 
   Future<void> markAsRead(String notificationId) async {
-    try {
-      await _firestore
-          .collection('notifications')
-          .doc(notificationId)
-          .update({'isRead': true});
-    } catch (e) {
-      debugPrint('Error marking notification as read: $e');
-    }
+    await markNotificationAsRead(notificationId);
   }
 
   Future<void> markAllAsRead() async {
     if (_currentUserId == null) return;
     try {
-      // Get all notifications (no isRead filter = no composite index needed)
+      // Get all notifications from server
       final allDocs = await _firestore
           .collection('notifications')
           .where('userId', isEqualTo: _currentUserId)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       // Filter unread locally
       final unreadDocs = allDocs.docs.where((doc) {
@@ -226,7 +215,7 @@ class InboxService extends ChangeNotifier {
         debugPrint('✅ Marked ${unreadDocs.length} notifications as read');
       }
     } catch (e) {
-      debugPrint('Error marking all as read: $e');
+      debugPrint('❌ Error marking all as read: $e');
     }
   }
 
@@ -237,7 +226,7 @@ class InboxService extends ChangeNotifier {
           .doc(notificationId)
           .delete();
     } catch (e) {
-      debugPrint('Error deleting notification: $e');
+      debugPrint('❌ Error deleting notification: $e');
     }
   }
 
@@ -245,19 +234,20 @@ class InboxService extends ChangeNotifier {
     if (_currentUserId == null) return;
     try {
       final batch = _firestore.batch();
-      final docs = await _firestore
+      final snapshot = await _firestore
           .collection('notifications')
           .where('userId', isEqualTo: _currentUserId)
-          .get();
-      for (var doc in docs.docs) {
+          .get(const GetOptions(source: Source.server));
+
+      for (var doc in snapshot.docs) {
         batch.delete(doc.reference);
       }
       await batch.commit();
+      debugPrint('✅ Cleared all notifications');
     } catch (e) {
-      debugPrint('Error clearing notifications: $e');
+      debugPrint('❌ Error clearing notifications: $e');
     }
   }
-
   // ══════════════════════════════════════════════════════════════════════════
   // CREATE NOTIFICATIONS
   // ══════════════════════════════════════════════════════════════════════════

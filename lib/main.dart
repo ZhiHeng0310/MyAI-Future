@@ -3,7 +3,8 @@ import 'package:careloop/screens/inbox_screen.dart';
 import 'package:careloop/services/medication_reminder_service.dart';
 import 'package:careloop/widgets/notification_popup.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' hide debugPrint;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -16,7 +17,7 @@ import 'providers/queue_provider.dart';
 import 'providers/medication_provider.dart';
 import 'providers/chat_provider.dart' hide debugPrint;
 import 'providers/appointment_provider.dart';
-import 'providers/doctor_chat_provider.dart';
+import 'providers/doctor_chat_provider.dart' hide debugPrint;
 import 'services/notification_service.dart';
 import 'screens/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
@@ -30,15 +31,32 @@ import 'package:careloop/screens/appointment/appointment_details_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ── Init Firebase FIRST ─────────────────────────────────────────
+  // Init Firebase FIRST
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // ── Register FCM background handler ─────────────────────────────
+  // KEY FIX: Clear Firestore cache on web to prevent BloomFilter errors
+  if (kIsWeb) {
+    try {
+      await FirebaseFirestore.instance.clearPersistence();
+      debugPrint('✅ Cleared Firestore cache (web)');
+    } catch (e) {
+      debugPrint('⚠️ Could not clear cache (already initialized): $e');
+      // This is fine - cache will be fresh on first load
+    }
+  }
+
+  // Configure Firestore settings
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
+
+  // Register FCM background handler
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-  // ── Init notifications ──────────────────────────────────────────
+  // Init notifications
   await NotificationService.init();
   await dotenv.load(fileName: "assets/.env");
 
