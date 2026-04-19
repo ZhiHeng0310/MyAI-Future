@@ -169,7 +169,7 @@ class BillAnalyzerService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // CHAT WITH BILL (for asking questions about a specific bill)
+  // CHAT WITH BILL - WITH HISTORY PERSISTENCE
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<String> chatAboutBill({
@@ -180,7 +180,10 @@ class BillAnalyzerService {
       debugPrint('💬 Sending bill chat to backend...');
       debugPrint('   Question: $question');
 
-      // ✅ FIX: Use dedicated bill chat endpoint with full bill context
+      // ✅ Get previous chat history for context
+      final chatHistory = await getChatHistory(analysis.id);
+
+      // ✅ FIX: Use dedicated bill chat endpoint with full bill context + history
       final response = await http.post(
         Uri.parse('${AppConfig.apiBaseUrl}/api/chat/bill'),
         headers: {'Content-Type': 'application/json'},
@@ -211,6 +214,11 @@ class BillAnalyzerService {
             'suggestions': analysis.suggestions,
             'potentialTotalSavings': analysis.potentialTotalSavings ?? 0,
           },
+          // ✅ NEW: Include chat history for context
+          'chatHistory': chatHistory.map((msg) => {
+            'question': msg.question,
+            'answer': msg.answer,
+          }).toList(),
         }),
       ).timeout(const Duration(seconds: 30));
 
@@ -219,7 +227,15 @@ class BillAnalyzerService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final message = data['message'] as String;
-        debugPrint('✅ Bill chat response received: ${message.substring(0, message.length < 100 ? message.length : 100)}...');
+        debugPrint('✅ Bill chat response received');
+
+        // ✅ Save to chat history
+        await _saveChatMessage(
+          billId: analysis.id,
+          question: question,
+          answer: message,
+        );
+
         return message;
       } else {
         debugPrint('❌ Bill chat failed: ${response.statusCode}');
@@ -236,6 +252,87 @@ class BillAnalyzerService {
       }
 
       return '❌ I had trouble answering that. Please try rephrasing your question or contact support if the problem continues.';
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // CHAT HISTORY MANAGEMENT
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Save a chat message to Firestore
+  Future<void> _saveChatMessage({
+    required String billId,
+    required String question,
+    required String answer,
+  }) async {
+    try {
+      await _firestore
+          .collection('bill_analyses')
+          .doc(billId)
+          .collection('chat_history')
+          .add({
+        'question': question,
+        'answer': answer,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      debugPrint('✅ Chat message saved to history');
+    } catch (e) {
+      debugPrint('⚠️ Error saving chat message: $e');
+      // Don't throw - chat still works without history
+    }
+  }
+
+  /// Get chat history for a bill
+  Future<List<BillChatMessage>> getChatHistory(String billId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('bill_analyses')
+          .doc(billId)
+          .collection('chat_history')
+          .orderBy('timestamp', descending: false)
+          .get();
+
+      return snapshot.docs
+          .map((doc) => BillChatMessage.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      debugPrint('⚠️ Error getting chat history: $e');
+      return [];
+    }
+  }
+
+  /// Stream chat history for real-time updates
+  Stream<List<BillChatMessage>> streamChatHistory(String billId) {
+    return _firestore
+        .collection('bill_analyses')
+        .doc(billId)
+        .collection('chat_history')
+        .orderBy('timestamp', descending: false)
+        .snapshots()
+        .map((snapshot) =>
+        snapshot.docs
+            .map((doc) => BillChatMessage.fromFirestore(doc))
+            .toList());
+  }
+
+  /// Clear chat history for a bill
+  Future<void> clearChatHistory(String billId) async {
+    try {
+      final batch = _firestore.batch();
+      final snapshot = await _firestore
+          .collection('bill_analyses')
+          .doc(billId)
+          .collection('chat_history')
+          .get();
+
+      for (var doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      debugPrint('✅ Chat history cleared');
+    } catch (e) {
+      debugPrint('❌ Error clearing chat history: $e');
+      rethrow;
     }
   }
 }

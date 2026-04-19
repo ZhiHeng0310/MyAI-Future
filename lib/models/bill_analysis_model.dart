@@ -222,3 +222,38 @@ extension BillAnalysisExtension on BillAnalysis {
     return 'Potential savings: RM ${potentialTotalSavings!.toStringAsFixed(2)}';
   }
 }
+
+class BillChatMessage {
+  final String id;
+  final String question;
+  final String answer;
+  final DateTime timestamp;
+
+  const BillChatMessage({
+    required this.id,
+    required this.question,
+    required this.answer,
+    required this.timestamp,
+  });
+
+  factory BillChatMessage.fromJson(Map<String, dynamic> json) {
+    return BillChatMessage(
+      id: json['id'] as String? ?? '',
+      question: json['question'] as String? ?? '',
+      answer: json['answer'] as String? ?? '',
+      timestamp: (json['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'question': question,
+    'answer': answer,
+    'timestamp': Timestamp.fromDate(timestamp),
+  };
+
+  factory BillChatMessage.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return BillChatMessage.fromJson({...data, 'id': doc.id});
+  }
+}

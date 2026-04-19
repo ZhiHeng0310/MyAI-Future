@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../../models/bill_analysis_model.dart';
 import '../../services/bill_analyzer_service.dart';
+import '../../screens/bill_analyzer/bill_history_screen.dart';
 
 class BillResultsScreen extends StatefulWidget {
   final BillAnalysis analysis;
@@ -22,12 +23,13 @@ class _BillResultsScreenState extends State<BillResultsScreen>
   final List<ChatMessage> _chatMessages = [];
   final BillAnalyzerService _service = BillAnalyzerService.instance;
   bool _isChatLoading = false;
+  bool _historyLoaded = false;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _addWelcomeMessage();
+    _loadChatHistory(); // Load existing chat history
   }
 
   @override
@@ -37,13 +39,50 @@ class _BillResultsScreenState extends State<BillResultsScreen>
     super.dispose();
   }
 
+  /// Load chat history from Firestore
+  Future<void> _loadChatHistory() async {
+    if (_historyLoaded) return;
+
+    try {
+      final history = await _service.getChatHistory(widget.analysis.id);
+
+      setState(() {
+        _chatMessages.clear();
+
+        // Add welcome message
+        _chatMessages.add(
+          ChatMessage(
+            text: '👋 Hi! I\'ve analyzed your bill. Ask me anything about the charges, medicines, or savings!',
+            isUser: false,
+          ),
+        );
+
+        // Add historical messages
+        for (var msg in history) {
+          _chatMessages.add(ChatMessage(text: msg.question, isUser: true));
+          _chatMessages.add(ChatMessage(text: msg.answer, isUser: false));
+        }
+
+        _historyLoaded = true;
+      });
+
+      debugPrint('✅ Loaded ${history.length} chat messages from history');
+    } catch (e) {
+      debugPrint('⚠️ Error loading chat history: $e');
+      // Still show welcome message
+      _addWelcomeMessage();
+    }
+  }
+
   void _addWelcomeMessage() {
-    _chatMessages.add(
-      ChatMessage(
-        text: '👋 Hi! I\'ve analyzed your bill. Ask me anything about the charges, medicines, or savings!',
-        isUser: false,
-      ),
-    );
+    if (_chatMessages.isEmpty) {
+      _chatMessages.add(
+        ChatMessage(
+          text: '👋 Hi! I\'ve analyzed your bill. Ask me anything about the charges, medicines, or savings!',
+          isUser: false,
+        ),
+      );
+    }
   }
 
   Future<void> _sendChatMessage() async {
@@ -81,6 +120,50 @@ class _BillResultsScreenState extends State<BillResultsScreen>
     }
   }
 
+  Future<void> _clearChatHistory() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) =>
+          AlertDialog(
+            title: const Text('Clear Chat History?'),
+            content: const Text(
+              'This will delete all your questions and answers about this bill. This action cannot be undone.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: const Text('Clear'),
+              ),
+            ],
+          ),
+    );
+
+    if (confirm == true) {
+      try {
+        await _service.clearChatHistory(widget.analysis.id);
+        setState(() {
+          _chatMessages.clear();
+          _addWelcomeMessage();
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Chat history cleared')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to clear history')),
+          );
+        }
+      }
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -88,11 +171,21 @@ class _BillResultsScreenState extends State<BillResultsScreen>
         title: const Text('Bill Analysis'),
         backgroundColor: const Color(0xFF00C896),
         foregroundColor: Colors.white,
+        actions: [
+          // Add clear chat history button when on chat tab
+          if (_tabController.index == 2)
+            IconButton(
+              icon: const Icon(Icons.delete_sweep),
+              tooltip: 'Clear Chat History',
+              onPressed: _clearChatHistory,
+            ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
+          onTap: (_) => setState(() {}), // Rebuild to show/hide clear button
           tabs: const [
             Tab(text: 'Overview'),
             Tab(text: 'Items'),

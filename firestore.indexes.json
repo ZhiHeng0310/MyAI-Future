@@ -52,6 +52,13 @@
         {"fieldPath": "userId", "order": "ASCENDING"},
         {"fieldPath": "timestamp", "order": "DESCENDING"}
       ]
+    },
+    {
+      "collectionId": "bill_analyses",
+      "fields": [
+        {"fieldPath": "user_id", "order": "ASCENDING"},
+        {"fieldPath": "analyzed_at", "order": "DESCENDING"}
+      ]
     }
   ],
   "fieldOverrides": []

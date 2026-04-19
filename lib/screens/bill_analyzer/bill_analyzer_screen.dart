@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/bill_analyzer_service.dart';
 import '../../models/bill_analysis_model.dart';
+import 'bill_history_screen.dart';
 import 'bill_results_screen.dart';
 
 class BillAnalyzerScreen extends StatefulWidget {
@@ -472,7 +473,12 @@ class _BillAnalyzerScreenState extends State<BillAnalyzerScreen> {
               ),
               TextButton(
                 onPressed: () {
-                  // TODO: Navigate to full history
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const BillHistoryScreen(),
+                    ),
+                  );
                 },
                 child: const Text('View All'),
               ),

@@ -248,14 +248,31 @@ service cloud.firestore {
     // BILL ANALYSES COLLECTION (AI bill analyzer feature)
     // ══════════════════════════════════════════════════════════════════════════
     match /bill_analyses/{billId} {
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.user_id == request.auth.uid;
       allow read: if isSignedIn() && (
-        resource.data.userId == request.auth.uid ||
+        resource.data.user_id == request.auth.uid ||
         isDoctorRole() ||
         isDoctorUser()
       );
-      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.user_id == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.user_id == request.auth.uid;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // BILL CHAT HISTORY (nested under bill_analyses)
+    // ══════════════════════════════════════════════════════════════════════════
+    match /bill_analyses/{billId}/chat_history/{messageId} {
+      allow create: if isSignedIn() && (
+        get(/databases/$(database)/documents/bill_analyses/$(billId)).data.user_id == request.auth.uid
+      );
+      allow read: if isSignedIn() && (
+        get(/databases/$(database)/documents/bill_analyses/$(billId)).data.user_id == request.auth.uid ||
+        isDoctorRole() ||
+        isDoctorUser()
+      );
+      allow update, delete: if isSignedIn() && (
+        get(/databases/$(database)/documents/bill_analyses/$(billId)).data.user_id == request.auth.uid
+      );
     }
 
     // ══════════════════════════════════════════════════════════════════════════
