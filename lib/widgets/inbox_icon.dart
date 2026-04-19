@@ -91,18 +91,26 @@ class _InboxIconAnimatedState extends State<InboxIconAnimated>
   void didChangeDependencies() {
     super.didChangeDependencies();
     debugPrint('📫 InboxIconAnimated: didChangeDependencies called');
-    // Trigger a manual check of the inbox service state
+
+    // Add a small delay to ensure HomeScreen has initialized the service
+    // This prevents race condition
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
+      if (!mounted) return;
+
+      // Wait a bit more for the service to be fully initialized
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (!mounted) return;
+
         final inbox = Provider.of<InboxService>(context, listen: false);
         debugPrint('📫 InboxIconAnimated: Manual check - ${inbox.notifications.length} total, ${inbox.unreadCount} unread');
-        // Force a rebuild by calling setState
-        if (mounted) {
+
+        // Only force rebuild if service has data
+        if (inbox.notifications.isNotEmpty && mounted) {
           setState(() {
             // This will trigger a rebuild and the Consumer should pick up the latest state
           });
         }
-      }
+      });
     });
   }
 
