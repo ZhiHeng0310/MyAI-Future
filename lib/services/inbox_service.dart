@@ -282,6 +282,7 @@ class InboxService extends ChangeNotifier {
     required String doctorId,
     required String doctorName,
     required String message,
+    String? requestId, // Firestore appointment_requests doc ID for tracking
   }) async {
     final notification = NotificationModel(
       id: '',
@@ -294,7 +295,9 @@ class InboxService extends ChangeNotifier {
         'doctorId': doctorId,
         'doctorName': doctorName,
         'requestMessage': message,
-        'action': 'open_appointments', // triggers appointment request handling in InboxScreen
+        'action': 'open_appointments', // triggers accept/decline in InboxScreen
+        if (requestId != null) 'requestId': requestId,
+        'responded': false, // set to true after patient acts
       },
     );
     await _saveAndNotify(notification);

@@ -28,7 +28,7 @@ class FirestoreService {
     this.initialize();
 
     try {
-      const patientDoc = await this.db.collection('patients').doc(userId).get();
+      const patientDoc = await this.db.collection('patient').doc(userId).get();
 
       if (!patientDoc.exists) {
         return null;
@@ -79,7 +79,7 @@ class FirestoreService {
 
     try {
       const medicationsSnapshot = await this.db
-        .collection('patients')
+        .collection('patient')
         .doc(userId)
         .collection('medications')
         .get();
@@ -234,7 +234,7 @@ class FirestoreService {
 
     try {
       const patientsSnapshot = await this.db
-        .collection('patients')
+        .collection('patient')
         .where('assignedDoctorId', '==', doctorId)
         .get();
 
@@ -267,7 +267,7 @@ class FirestoreService {
       this.initialize();
 
       try {
-        await this.db.collection('patients').doc(userId).set(
+        await this.db.collection('patient').doc(userId).set(
           {
             riskLevel: risk,
             lastRiskUpdate: this.FieldValue.serverTimestamp()
@@ -336,7 +336,7 @@ class FirestoreService {
       for (const patientId of patientIds) {
         try {
           const patientDoc = await this.db
-            .collection('patients')
+            .collection('patient')
             .doc(patientId)
             .get();
 
@@ -370,7 +370,7 @@ class FirestoreService {
     try {
       // Primary: subcollection under patient document
       const subSnap = await this.db
-        .collection('patients').doc(userId)
+        .collection('patient').doc(userId)
         .collection('medications').get();
 
       if (!subSnap.empty) {

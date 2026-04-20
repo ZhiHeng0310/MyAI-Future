@@ -164,11 +164,7 @@ class DoctorChatProvider extends ChangeNotifier {
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
-    _messages.add(DoctorChatMessage(
-      text: text,
-      isDoctor: true,
-    ));
-
+    _messages.add(DoctorChatMessage(text: text, isDoctor: true));
     _thinking = true;
     notifyListeners();
 
@@ -188,36 +184,98 @@ class DoctorChatProvider extends ChangeNotifier {
         conversationHistory: conversationHistory,
       );
 
-      final message = res['message'] ?? 'No response';
+      final backendMessage = res['message'] ?? 'No response';
       final actions = List<String>.from(res['actions'] ?? []);
+      final lowerText = text.toLowerCase();
+      final doctorLastName = _doctor?.name.split(' ').last ?? 'User';
 
-      // ✅ FIX: Extract patient_list from backend response
-      List<PatientModel>? patientOptions;
-      if (res['patient_list'] != null && res['patient_list'] is List) {
-        try {
-          patientOptions = (res['patient_list'] as List)
-              .map((p) => PatientModel(
-            id: p['id'] ?? '',
-            name: p['name'] ?? 'Unknown',
-            email: '', // Not needed for selection
-            phone: '', // Not needed for selection
-            diagnosis: p['diagnosis'],
-          ))
-              .toList();
-        } catch (e) {
-          debugPrint('❌ Error parsing patient_list: $e');
-        }
+      // ══════════════════════════════════════════════════════════════════
+      // ACTION ROUTING — intercept known actions and handle locally.
+      // The backend returns action *names* but the UI checks for specific
+      // keys set here; they must match exactly.
+      // ══════════════════════════════════════════════════════════════════
+
+      // ── 1. REVIEW RECENT ALERTS (no patient selection needed) ─────────
+      //       Fetches real health_alert documents from Firestore.
+      if (actions.contains('review_recent_alerts') ||
+          lowerText.contains('review alert') ||
+          lowerText.contains('recent alert') ||
+          lowerText.contains('check alert')) {
+        final alertResult = await _handleReviewRecentAlerts();
+        _messages.add(DoctorChatMessage(
+          text: alertResult,
+          isDoctor: false,
+          action: 'review_recent_alerts',
+        ));
+        _thinking = false;
+        notifyListeners();
+        return;
       }
 
+      // ── 2. CHECK PATIENT STATUS (requires patient selection) ──────────
+      //       Shows a patient picker; on selection calls
+      //       checkPatientStatusFromSelection() which fetches real data.
+      if (actions.contains('check_patient_status') ||
+          lowerText.contains('check patient') ||
+          lowerText.contains('patient status')) {
+        if (_myPatients.isEmpty) {
+          _messages.add(DoctorChatMessage(
+            text: 'You don\'t have any patients yet. Patients will appear '
+                'here once you prescribe medications to them.',
+            isDoctor: false,
+          ));
+        } else {
+          _messages.add(DoctorChatMessage(
+            text: 'Hello Dr. $doctorLastName. Which patient would you like '
+                'me to check on?',
+            isDoctor: false,
+            action: 'choose_patient_for_status', // ← key the UI checks
+            patientOptions: List<PatientModel>.from(_myPatients),
+          ));
+        }
+        _thinking = false;
+        notifyListeners();
+        return;
+      }
+
+      // ── 3. SEND APPOINTMENT REQUEST (requires patient selection) ──────
+      //       Shows a patient picker; on selection calls
+      //       sendAppointmentRequestToPatient() which fires the
+      //       notification the patient can accept or decline.
+      if (actions.contains('send_appointment_request') ||
+          lowerText.contains('send appointment') ||
+          lowerText.contains('appointment request') ||
+          lowerText.contains('request appointment')) {
+        if (_myPatients.isEmpty) {
+          _messages.add(DoctorChatMessage(
+            text: 'You don\'t have any patients with prescriptions yet. '
+                'Please prescribe medication to a patient before '
+                'requesting an appointment.',
+            isDoctor: false,
+          ));
+        } else {
+          _messages.add(DoctorChatMessage(
+            text: 'Which patient would you like to send an appointment '
+                'request to?',
+            isDoctor: false,
+            action: 'choose_appointment_patient', // ← key the UI checks
+            patientOptions: List<PatientModel>.from(_myPatients),
+          ));
+        }
+        _thinking = false;
+        notifyListeners();
+        return;
+      }
+
+      // ── 4. DEFAULT — show the AI's message as-is ──────────────────────
       _messages.add(DoctorChatMessage(
-        text: message,
+        text: backendMessage,
         isDoctor: false,
         action: actions.isNotEmpty ? actions.first : null,
-        patientOptions: patientOptions, // ✅ Pass patient options to message
       ));
     } catch (e) {
       _messages.add(DoctorChatMessage(
-        text: "❌ Connection error: $e\n\nPlease check your connection and try again.",
+        text: '❌ Connection error: $e\n\nPlease check your connection and try again.',
         isDoctor: false,
       ));
     }
@@ -651,21 +709,63 @@ class DoctorChatProvider extends ChangeNotifier {
     if (_doctor == null) return;
 
     _messages.add(DoctorChatMessage(
-      text: '📩 Requesting appointment for ${patient.name}...',
+      text: '📩 Sending appointment request to ${patient.name}…',
       isDoctor: true,
     ));
     notifyListeners();
 
-    await _handleSendAppointmentRequest(
-      patient.id,
-      'Please choose a suitable appointment time with Dr. ${_doctor!.name}.',
-    );
+    try {
+      // Create a tracked appointment request document in Firestore so the
+      // patient's accept/decline can be linked back to this doctor.
+      final requestRef = await FirebaseFirestore.instance
+          .collection('appointment_requests')
+          .add({
+        'doctorId': _doctor!.id,
+        'doctorName': _doctor!.name,
+        'patientId': patient.id,
+        'patientName': patient.name,
+        'status': 'pending',          // updated to 'accepted' / 'declined'
+        'createdAt': FieldValue.serverTimestamp(),
+      });
 
-    _messages.add(DoctorChatMessage(
-      text: '✅ Appointment request sent to ${patient.name}.',
-      isDoctor: false,
-      action: 'send_appointment_request',
-    ));
+      final requestMessage =
+          'Dr. ${_doctor!.name} would like to schedule an appointment with you. '
+          'Please choose a suitable time.';
+
+      // Send the notification that will show Accept / Decline buttons in
+      // the patient's inbox (InboxService._isAppointmentRequest checks
+      // for action == 'open_appointments', doctorId, and requestMessage).
+      await InboxService.sendAppointmentRequestNotification(
+        userId: patient.id,
+        doctorId: _doctor!.id,
+        doctorName: _doctor!.name,
+        message: requestMessage,
+        requestId: requestRef.id, // ← new field for tracking
+      );
+
+      // Push notification so the patient is alerted immediately.
+      await NotificationService.sendPushToUser(
+        userId: patient.id,
+        userCollection: 'patient',
+        title: '📅 Appointment Request — Dr. ${_doctor!.name}',
+        body: requestMessage,
+        channel: 'careloop_queue',
+      );
+
+      _messages.add(DoctorChatMessage(
+        text: '✅ Appointment request sent to ${patient.name}.\n\n'
+            'They will receive a notification and can accept or decline '
+            'directly from their inbox.',
+        isDoctor: false,
+        action: 'send_appointment_request',
+      ));
+    } catch (e) {
+      debugPrint('❌ Error sending appointment request: $e');
+      _messages.add(DoctorChatMessage(
+        text: '❌ Failed to send appointment request: $e',
+        isDoctor: false,
+      ));
+    }
     notifyListeners();
   }
 

@@ -1,5 +1,4 @@
 // lib/screens/inbox_screen.dart
-// lib/screens/inbox_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -380,8 +379,12 @@ class _NotificationTile extends StatelessWidget {
                               children: [
                                 Expanded(
                                   child: OutlinedButton(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                      side: const BorderSide(color: Colors.red),
+                                    ),
                                     onPressed: () => _rejectAppointmentRequest(context),
-                                    child: const Text('Reject'),
+                                    child: const Text('Decline'),
                                   ),
                                 ),
                                 const SizedBox(width: 10),
@@ -413,7 +416,8 @@ class _NotificationTile extends StatelessWidget {
           notification.metadata != null &&
           notification.metadata!['action'] == 'open_appointments' &&
           notification.metadata!['doctorId'] != null &&
-          notification.metadata!['requestMessage'] != null;
+          notification.metadata!['requestMessage'] != null &&
+          notification.metadata!['responded'] != true; // hide buttons after responding
     } catch (e) {
       debugPrint('⚠️ Error checking appointment request: $e');
       return false;
@@ -425,37 +429,77 @@ class _NotificationTile extends StatelessWidget {
       final doctorId = notification.metadata?['doctorId'] as String?;
       final doctorName = notification.metadata?['doctorName'] as String?;
       final requestMessage = notification.metadata?['requestMessage'] as String?;
+      final requestId = notification.metadata?['requestId'] as String?;
       final patient = Provider.of<AuthProvider>(context, listen: false).patient;
 
       if (doctorId == null || patient == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unable to open booking at this time.')),
-        );
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Unable to open booking at this time.')),
+          );
+        }
         return;
       }
+
+      // 1. Mark the notification as responded so buttons disappear.
+      if (notification.id.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('notifications')
+            .doc(notification.id)
+            .update({'metadata.responded': true, 'isRead': true});
+      }
+
+      // 2. Update the appointment_requests doc status (if we have the ID).
+      if (requestId != null && requestId.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('appointment_requests')
+            .doc(requestId)
+            .update({'status': 'accepted'});
+      }
+
+      // 3. Notify the doctor that the patient accepted.
+      await InboxService.sendAppointmentUpdateNotification(
+        userId: doctorId,
+        title: '✅ Appointment Request Accepted',
+        message:
+        '${patient.name} accepted your appointment request and is now booking a time.',
+        metadata: {
+          'patientId': patient.id,
+          'patientName': patient.name,
+          'action': 'patient_accepted',
+        },
+      );
+
+      // 4. Load doctor model and navigate to booking screen.
+      if (!context.mounted) return;
 
       final doctor = await FirestoreService().getDoctor(doctorId);
       if (doctor == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Doctor information could not be loaded.')),
-        );
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Doctor information could not be loaded.')),
+          );
+        }
         return;
       }
 
+      if (!context.mounted) return;
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => AppointmentBookingScreen(
           doctor: doctor,
           patient: patient,
-          initialSymptoms: requestMessage != null && requestMessage.isNotEmpty
+          initialSymptoms: (requestMessage != null && requestMessage.isNotEmpty)
               ? [requestMessage]
               : [],
         ),
       ));
     } catch (e) {
       debugPrint('❌ Error accepting appointment request: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -463,38 +507,70 @@ class _NotificationTile extends StatelessWidget {
     try {
       final doctorId = notification.metadata?['doctorId'] as String?;
       final doctorName = notification.metadata?['doctorName'] as String?;
+      final requestId = notification.metadata?['requestId'] as String?;
       final patient = Provider.of<AuthProvider>(context, listen: false).patient;
 
       if (doctorId == null || patient == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unable to send rejection.')),
-        );
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Unable to send rejection.')),
+          );
+        }
         return;
       }
 
+      // 1. Mark the notification as responded so buttons disappear.
+      if (notification.id.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('notifications')
+            .doc(notification.id)
+            .update({'metadata.responded': true, 'isRead': true});
+      }
+
+      // 2. Update the appointment_requests doc status (if we have the ID).
+      if (requestId != null && requestId.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('appointment_requests')
+            .doc(requestId)
+            .update({'status': 'declined'});
+      }
+
+      // 3. Send a notification to the doctor.
       await InboxService.sendAppointmentUpdateNotification(
         userId: doctorId,
         title: '❌ Appointment Request Declined',
         message:
-        '${patient.name} declined the appointment request from Dr. ${doctorName ?? 'your doctor'}.',
+        '${patient.name} declined your appointment request.',
+        metadata: {
+          'patientId': patient.id,
+          'patientName': patient.name,
+          'action': 'patient_declined',
+        },
       );
 
+      // 4. Push notification so the doctor sees it immediately.
       await NotificationService.sendPushToUser(
-        userId:         doctorId,
+        userId: doctorId,
         userCollection: 'doctors',
-        title:          '❌ Appointment Request Declined',
-        body:           '${patient.name} declined your appointment request.',
-        channel:        'careloop_queue',
+        title: '❌ Appointment Request Declined',
+        body: '${patient.name} declined your appointment request.',
+        channel: 'careloop_queue',
       );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Your rejection was sent to the doctor.')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Rejection sent. The doctor has been notified.'),
+          ),
+        );
+      }
     } catch (e) {
       debugPrint('❌ Error rejecting appointment request: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -658,18 +734,19 @@ class _NotificationTile extends StatelessWidget {
         content: Text(notification.message),
         actions: [
           TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             onPressed: () {
               Navigator.of(context).pop();
               _rejectAppointmentRequest(context);
             },
-            child: const Text('Reject'),
+            child: const Text('Decline'),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.of(context).pop();
               _acceptAppointmentRequest(context);
             },
-            child: const Text('Accept'),
+            child: const Text('Accept & Book'),
           ),
         ],
       ),

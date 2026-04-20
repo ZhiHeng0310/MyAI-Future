@@ -3,41 +3,41 @@ import 'ai_body_check_screen.dart';
 import 'ai_report_summarizer_screen.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../services/firestore_service.dart';
 import '../../models/patient_model.dart';
 
 class DoctorAIScreen extends StatelessWidget {
   const DoctorAIScreen({super.key});
 
   Future<void> _showPatientSelector(BuildContext context, String doctorId) async {
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
     try {
-      // Fetch patient from Firestore
-      final patientsSnapshot = await FirebaseFirestore.instance
-          .collection('patient')
-          .limit(50)
-          .get();
+      // ✅ FIX: Fetch only patients who have been given medications by this doctor
+      final firestoreService = FirestoreService();
+      final patients = await firestoreService.getPatientsForDoctor(doctorId);
+
+      // Close loading dialog
+      if (context.mounted) Navigator.pop(context);
 
       if (!context.mounted) return;
-
-      final patients = patientsSnapshot.docs
-          .map((doc) {
-        try {
-          return PatientModel.fromFirestore(doc);
-        } catch (e) {
-          print('Error parsing patient: $e');
-          return null;
-        }
-      })
-          .where((p) => p != null)
-          .cast<PatientModel>()
-          .toList();
 
       if (patients.isEmpty) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('No patient found. Please add patient first.'),
+              content: Text(
+                'No patients found. You need to prescribe medication to a patient first to access their records here.',
+              ),
               backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
             ),
           );
         }
@@ -48,27 +48,94 @@ class DoctorAIScreen extends StatelessWidget {
       final selectedPatient = await showDialog<PatientModel>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Select Patient'),
+          title: Row(
+            children: [
+              const Icon(Icons.people, color: Color(0xFF00C9B8)),
+              const SizedBox(width: 12),
+              const Text('Select Patient'),
+            ],
+          ),
           content: SizedBox(
             width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: patients.length,
-              itemBuilder: (context, index) {
-                final patient = patients[index];
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: const Color(0xFF00C9B8),
-                    child: Text(
-                      patient.name.isNotEmpty ? patient.name[0].toUpperCase() : 'P',
-                      style: const TextStyle(color: Colors.white),
-                    ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Your Patients (${patients.length})',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
                   ),
-                  title: Text(patient.name),
-                  subtitle: Text('ID: ${patient.id}'),
-                  onTap: () => Navigator.pop(context, patient),
-                );
-              },
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: patients.length,
+                    itemBuilder: (context, index) {
+                      final patient = patients[index];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        elevation: 1,
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: const Color(0xFF00C9B8),
+                            child: Text(
+                              patient.name.isNotEmpty
+                                  ? patient.name[0].toUpperCase()
+                                  : 'P',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          title: Text(
+                            patient.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(patient.email),
+                              if (patient.diagnosis != null) ...[
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.shade50,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    patient.diagnosis!,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.blue.shade700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          trailing: const Icon(
+                            Icons.arrow_forward_ios,
+                            size: 16,
+                            color: Colors.grey,
+                          ),
+                          onTap: () => Navigator.pop(context, patient),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
           actions: [
@@ -93,11 +160,14 @@ class DoctorAIScreen extends StatelessWidget {
         );
       }
     } catch (e) {
-      print('Error loading patient: $e');
+      // Close loading dialog if still open
+      if (context.mounted) Navigator.pop(context);
+
+      print('Error loading patients: $e');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error loading patient: ${e.toString()}'),
+            content: Text('Error loading patients: ${e.toString()}'),
             backgroundColor: Colors.red,
           ),
         );
