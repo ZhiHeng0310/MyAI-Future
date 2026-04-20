@@ -330,66 +330,6 @@ class _MessageBubble extends StatelessWidget {
                 ],
               ),
             ),
-            // ✅ ADD THIS: Display patient selection buttons if available
-            if (msg.patientOptions != null && msg.patientOptions!.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Select a patient:',
-                    style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[700],
-                    ),
-                  ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: msg.patientOptions!.map((patient) {
-                    return ActionChip(
-                      avatar: CircleAvatar(
-                        backgroundColor: Theme.of(context).colorScheme.primary,
-                        child: Text(
-                          patient.name.isNotEmpty ? patient.name[0].toUpperCase() : '?',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      label: Text(patient.name),
-                      onPressed: () {
-                        // Handle patient selection based on the action
-                        final provider = Provider.of<DoctorChatProvider>(context, listen: false);
-
-                        if (msg.action == 'choose_patient_for_status') {
-                          provider.checkPatientStatusFromSelection(patient);
-                        } else if (msg.action == 'choose_appointment_patient') {
-                          provider.sendAppointmentRequestToPatient(patient);
-                        } else if (msg.action == 'send_patient_message') {
-                          // You can add a dialog here to type custom message
-                          provider.sendMessage('Send message to ${patient.name}');
-                        } else {
-                          // Fallback for any other action
-                          provider.sendMessage('Tell me about ${patient.name}');
-                        }
-                      },
-                      backgroundColor: Colors.white,
-                      side: BorderSide(
-                        color: Theme.of(context).colorScheme.primary,
-                        width: 1.5,
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
-              ),
-            ),
           ],
         ),
       ),
@@ -483,40 +423,6 @@ class _TypingIndicator extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-// ─── Input Bar ────────────────────────────────────────────────────────────────
-
-class _PatientSelectionList extends StatelessWidget {
-  final List<PatientModel> patientOptions;
-  const _PatientSelectionList({required this.patientOptions});
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 6,
-      children: patientOptions.map((patient) {
-        return ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF6C63FF),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          ),
-          onPressed: () {
-            FocusScope.of(context).unfocus();
-            context.read<DoctorChatProvider>().sendAppointmentRequestToPatient(patient);
-          },
-          child: Text(
-            patient.name,
-            style: const TextStyle(color: Colors.white, fontSize: 13),
-          ),
-        );
-      }).toList(),
     );
   }
 }

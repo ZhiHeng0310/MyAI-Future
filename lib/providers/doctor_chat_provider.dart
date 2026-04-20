@@ -162,6 +162,62 @@ class DoctorChatProvider extends ChangeNotifier {
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> sendMessage(String text) async {
+    if (_messages.length >= 2) {
+      final previousMessage = _messages[_messages.length - 2];
+
+      // ── Handle awaiting patient name for STATUS CHECK ──
+      if (previousMessage.action == 'awaiting_patient_name_for_status') {
+        final extractedPatient = _extractPatientFromMessage(text);
+
+        if (extractedPatient != null) {
+          _messages.add(DoctorChatMessage(
+            text: 'Checking status for ${extractedPatient.name}...',
+            isDoctor: false,
+          ));
+          _thinking = false;
+          notifyListeners();
+
+          final statusReport = await _handleCheckPatientStatus(extractedPatient.id, '');
+          _messages.add(DoctorChatMessage(
+            text: statusReport,
+            isDoctor: false,
+            action: 'patient_status_checked',
+          ));
+          _thinking = false;
+          notifyListeners();
+          return;
+        } else {
+          _messages.add(DoctorChatMessage(
+            text: 'I couldn\'t find a patient with that name. Please try again or check your patient list.',
+            isDoctor: false,
+          ));
+          _thinking = false;
+          notifyListeners();
+          return;
+        }
+      }
+
+      // ── Handle awaiting patient name for APPOINTMENT REQUEST ──
+      if (previousMessage.action == 'awaiting_patient_name_for_appointment') {
+        final extractedPatient = _extractPatientFromMessage(text);
+
+        if (extractedPatient != null) {
+          _thinking = false;
+          notifyListeners();
+
+          await sendAppointmentRequestToPatient(extractedPatient);
+          return;
+        } else {
+          _messages.add(DoctorChatMessage(
+            text: 'I couldn\'t find a patient with that name. Please try again or check your patient list.',
+            isDoctor: false,
+          ));
+          _thinking = false;
+          notifyListeners();
+          return;
+        }
+      }
+    }
     if (text.trim().isEmpty) return;
 
     _messages.add(DoctorChatMessage(text: text, isDoctor: true));
@@ -215,6 +271,7 @@ class DoctorChatProvider extends ChangeNotifier {
       // ── 2. CHECK PATIENT STATUS (requires patient selection) ──────────
       //       Shows a patient picker; on selection calls
       //       checkPatientStatusFromSelection() which fetches real data.
+// NEW CODE - NLP BASED
       if (actions.contains('check_patient_status') ||
           lowerText.contains('check patient') ||
           lowerText.contains('patient status')) {
@@ -225,13 +282,33 @@ class DoctorChatProvider extends ChangeNotifier {
             isDoctor: false,
           ));
         } else {
-          _messages.add(DoctorChatMessage(
-            text: 'Hello Dr. $doctorLastName. Which patient would you like '
-                'me to check on?',
-            isDoctor: false,
-            action: 'choose_patient_for_status', // ← key the UI checks
-            patientOptions: List<PatientModel>.from(_myPatients),
-          ));
+          // ✅ NEW: Try to extract patient name from message
+          final extractedPatient = _extractPatientFromMessage(text);
+
+          if (extractedPatient != null) {
+            // ✅ NEW: Patient found! Check their status directly
+            _messages.add(DoctorChatMessage(
+              text: 'Checking status for ${extractedPatient.name}...',
+              isDoctor: false,
+            ));
+            _thinking = false;
+            notifyListeners();
+
+            final statusReport = await _handleCheckPatientStatus(extractedPatient.id, '');
+            _messages.add(DoctorChatMessage(
+              text: statusReport,
+              isDoctor: false,
+              action: 'patient_status_checked',
+            ));
+          } else {
+            // ✅ NEW: No patient name found, ask for it via TEXT (not buttons)
+            _messages.add(DoctorChatMessage(
+              text: 'Hello Dr. $doctorLastName. Which patient would you like me to check on? '
+                  'Please provide the patient\'s name.',
+              isDoctor: false,
+              action: 'awaiting_patient_name_for_status', // ✅ NEW action type
+            ));
+          }
         }
         _thinking = false;
         notifyListeners();
@@ -254,13 +331,25 @@ class DoctorChatProvider extends ChangeNotifier {
             isDoctor: false,
           ));
         } else {
-          _messages.add(DoctorChatMessage(
-            text: 'Which patient would you like to send an appointment '
-                'request to?',
-            isDoctor: false,
-            action: 'choose_appointment_patient', // ← key the UI checks
-            patientOptions: List<PatientModel>.from(_myPatients),
-          ));
+          // ✅ NEW: Try to extract patient name from message
+          final extractedPatient = _extractPatientFromMessage(text);
+
+          if (extractedPatient != null) {
+            // ✅ NEW: Patient found! Send request directly
+            _thinking = false;
+            notifyListeners();
+
+            await sendAppointmentRequestToPatient(extractedPatient);
+            return;
+          } else {
+            // ✅ NEW: No patient name found, ask for it via TEXT (not buttons)
+            _messages.add(DoctorChatMessage(
+              text: 'Hello Dr. $doctorLastName. Which patient would you like to send '
+                  'an appointment request to? Please provide the patient\'s name.',
+              isDoctor: false,
+              action: 'awaiting_patient_name_for_appointment', // ✅ NEW action type
+            ));
+          }
         }
         _thinking = false;
         notifyListeners();
@@ -814,6 +903,38 @@ class DoctorChatProvider extends ChangeNotifier {
     }
   }
 
+  /// NEW METHOD ADDED
+  /// Extracts patient from message using NLP
+  /// Returns PatientModel if found, null otherwise
+  PatientModel? _extractPatientFromMessage(String message) {
+    if (_myPatients.isEmpty) return null;
+
+    final lowerMessage = message.toLowerCase();
+
+    // Try exact name match (full name or partial)
+    for (final patient in _myPatients) {
+      final lowerName = patient.name.toLowerCase();
+
+      // Check if the patient's full name is mentioned
+      if (lowerMessage.contains(lowerName)) {
+        return patient;
+      }
+
+      // Check if any part of the name is mentioned (first name, last name)
+      final nameParts = lowerName.split(' ');
+      for (final part in nameParts) {
+        if (part.length > 2 && lowerMessage.contains(part)) {
+          // Make sure it's not a common word by checking word boundaries
+          final regex = RegExp(r'\b' + RegExp.escape(part) + r'\b');
+          if (regex.hasMatch(lowerMessage)) {
+            return patient;
+          }
+        }
+      }
+    }
+
+    return null;
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // HELPER: Find patient by hint or query
