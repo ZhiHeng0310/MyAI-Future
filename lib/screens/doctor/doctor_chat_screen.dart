@@ -222,7 +222,6 @@ class _DoctorChatScreenState extends State<DoctorChatScreen> {
 class _QuickPrompts extends StatelessWidget {
   final Function(String) onTap;
   static const _prompts = [
-    'How are my patient today?',
     'Check patient status',
     'Send appointment request',
     'Review recent alerts',
@@ -268,135 +267,134 @@ class _MessageBubble extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        mainAxisAlignment:
-        isDoc ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
+          mainAxisAlignment:
+          isDoc ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
           if (!isDoc)
+      Container(
+      width: 30, height: 30,
+      margin: const EdgeInsets.only(right: 8),
+      decoration: BoxDecoration(
+        color:        const Color(0xFF6C63FF),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Icon(Icons.smart_toy_rounded,
+          color: Colors.white, size: 16),
+      ),
+      Flexible(
+        child: Column(
+          crossAxisAlignment:
+         isDoc ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
             Container(
-              width: 30, height: 30,
-              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(
+              horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color:        const Color(0xFF6C63FF),
-                borderRadius: BorderRadius.circular(8),
+                color: isDoc
+                ? const Color(0xFF6C63FF)
+                : Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft:     const Radius.circular(18),
+                  topRight:    const Radius.circular(18),
+                  bottomLeft:  Radius.circular(isDoc ? 18 : 4),
+                  bottomRight: Radius.circular(isDoc ? 4 : 18),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                  color:     Colors.black.withOpacity(0.06),
+                  blurRadius: 8,
+                  offset:    const Offset(0, 2))
+                ],
               ),
-              child: const Icon(Icons.smart_toy_rounded,
-                  color: Colors.white, size: 16),
-            ),
-          Flexible(
-            child: Column(
-              crossAxisAlignment:
-              isDoc ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: isDoc
-                        ? const Color(0xFF6C63FF)
-                        : Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft:     const Radius.circular(18),
-                      topRight:    const Radius.circular(18),
-                      bottomLeft:  Radius.circular(isDoc ? 18 : 4),
-                      bottomRight: Radius.circular(isDoc ? 4 : 18),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (msg.hasImage && isDoc) ...[
+                    const Icon(Icons.image_rounded,
+                    color: Colors.white70, size: 16),
+                    const SizedBox(width: 6),
+                  ],
+                  Flexible(
+                    child: Text(
+                      msg.text,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 15,
+                        color: isDoc
+                        ? Colors.white
+                        : const Color(0xFF0D1B2A),
+                        height: 1.5,
+                      ),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                          color:     Colors.black.withOpacity(0.06),
-                          blurRadius: 8,
-                          offset:    const Offset(0, 2))
-                    ],
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (msg.hasImage && isDoc) ...[
-                        const Icon(Icons.image_rounded,
-                            color: Colors.white70, size: 16),
-                        const SizedBox(width: 6),
-                      ],
-                      Flexible(
+                ],
+              ),
+            ),
+            // ✅ ADD THIS: Display patient selection buttons if available
+            if (msg.patientOptions != null && msg.patientOptions!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Select a patient:',
+                    style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[700],
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: msg.patientOptions!.map((patient) {
+                    return ActionChip(
+                      avatar: CircleAvatar(
+                        backgroundColor: Theme.of(context).colorScheme.primary,
                         child: Text(
-                          msg.text,
-                          style: GoogleFonts.dmSans(
-                            fontSize: 15,
-                            color: isDoc
-                                ? Colors.white
-                                : const Color(0xFF0D1B2A),
-                            height: 1.5,
+                          patient.name.isNotEmpty ? patient.name[0].toUpperCase() : '?',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                // ✅ ADD THIS: Display patient selection buttons if available
-                if (msg.patientOptions != null && msg.patientOptions!.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Select a patient:',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey[700],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: msg.patientOptions!.map((patient) {
-                            return ActionChip(
-                              avatar: CircleAvatar(
-                                backgroundColor: Theme.of(context).colorScheme.primary,
-                                child: Text(
-                                  patient.name.isNotEmpty ? patient.name[0].toUpperCase() : '?',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              label: Text(patient.name),
-                              onPressed: () {
-                                // Handle patient selection based on the action
-                                final provider = Provider.of<DoctorChatProvider>(context, listen: false);
+                      label: Text(patient.name),
+                      onPressed: () {
+                        // Handle patient selection based on the action
+                        final provider = Provider.of<DoctorChatProvider>(context, listen: false);
 
-                                if (msg.action == 'check_patient_status') {
-                                  provider.sendMessage('Check status for ${patient.name}');
-                                } else if (msg.action == 'send_appointment_request') {
-                                  provider.sendAppointmentRequestToPatient(patient);
-                                } else if (msg.action == 'view_alerts') {
-                                  provider.sendMessage('Show alerts for ${patient.name}');
-                                } else if (msg.action == 'review_my_patients') {
-                                  provider.sendMessage('Tell me about ${patient.name}');
-                                } else if (msg.action == 'send_patient_message') {
-                                  // You can add a dialog here to type custom message
-                                  provider.sendMessage('Send message to ${patient.name}');
-                                }
-                              },
-                              backgroundColor: Colors.white,
-                              side: BorderSide(
-                                color: Theme.of(context).colorScheme.primary,
-                                width: 1.5,
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ],
-                    ),
-                  ),
+                        if (msg.action == 'choose_patient_for_status') {
+                          provider.checkPatientStatusFromSelection(patient);
+                        } else if (msg.action == 'choose_appointment_patient') {
+                          provider.sendAppointmentRequestToPatient(patient);
+                        } else if (msg.action == 'send_patient_message') {
+                          // You can add a dialog here to type custom message
+                          provider.sendMessage('Send message to ${patient.name}');
+                        } else {
+                          // Fallback for any other action
+                          provider.sendMessage('Tell me about ${patient.name}');
+                        }
+                      },
+                      backgroundColor: Colors.white,
+                      side: BorderSide(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 1.5,
+                      ),
+                    );
+                  }).toList(),
+                ),
               ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    ],
+    ),
     );
   }
 }

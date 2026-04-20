@@ -85,7 +85,7 @@ class EnhancedChatService {
   - Patient Summaries: ${patientSummaries}
   - Available Patients JSON: ${patientListJson}
 
-  IMPORTANT: When responding to queries about patients, checking status, sending messages, or viewing alerts:
+  IMPORTANT: When responding to queries about checking patient status, sending appointment requests, or managing patient care:
   1. Always include the patient_list array in your response with ALL available patients
   2. Greet as "Hello Dr. ${doctorLastName}" not "Hello Dr.User"
   3. Ask doctor to select which patient they want to interact with
@@ -102,7 +102,7 @@ class EnhancedChatService {
 
           // Ensure patient_list is included for patient-related actions
           const needsPatientList = response.actions?.some(action =>
-            ['check_patient_status', 'view_alerts', 'send_patient_message', 'send_appointment_request', 'review_my_patients'].includes(action)
+            ['check_patient_status', 'send_patient_message', 'send_appointment_request'].includes(action)
           );
 
           if (needsPatientList && (!response.patient_list || response.patient_list.length === 0)) {

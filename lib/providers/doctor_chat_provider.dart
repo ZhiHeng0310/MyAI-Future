@@ -88,11 +88,10 @@ class DoctorChatProvider extends ChangeNotifier {
           text: 'Hello Dr. ${doctor.name.split(' ').last}! 👋 I\'m your CareLoop AI assistant.\n\n'
               'You have ${_myPatients.length} patient(s) via prescriptions.\n\n'
               'I can help you:\n'
-              '👥 Check how your patient are doing today\n'
-              '📊 Review medication adherence (for your prescriptions)\n'
-              '💬 Send messages to patient\n'
-              '📅 Request appointments\n'
-              '🚨 Review recent alerts (last 24 hours)\n\n'
+              '📊 Check specific patient status (medications & alerts)\n'
+              '🚨 Review recent alerts (last 24 hours)\n'
+              '📅 Request appointments with patients\n'
+              '💬 Send messages to patients\n\n'
               'What would you like to do?',
           isDoctor: false,
         ));
@@ -267,43 +266,51 @@ class DoctorChatProvider extends ChangeNotifier {
       return;
     }
 
-    // SPEC FEATURE 1: How Are My Patients Today?
-    if (response.actions.contains('review_my_patients') ||
-        query.toLowerCase().contains('how are my patient') ||
-        query.toLowerCase().contains('patient status') ||
-        query.toLowerCase().contains('my patient today')) {
-      displayMsg = await _handleHowAreMyPatients();
+    // SPEC FEATURE 4: Review Recent Alerts (last 24 hours) - NO PATIENT SELECTION
+    if (response.actions.contains('review_recent_alerts') ||
+        query.toLowerCase().contains('recent alert') ||
+        query.toLowerCase().contains('review alert')) {
+      displayMsg = await _handleReviewRecentAlerts();
+      _messages.add(DoctorChatMessage(
+        text: displayMsg,
+        isDoctor: false,
+        action: 'review_recent_alerts',
+      ));
+      _thinking = false;
+      notifyListeners();
+      return;
+    }
 
-      // ✅ FIX: Add patient selection UI
-      if (_myPatients.isNotEmpty) {
+    // SPEC FEATURE 2: Check Patient Status - REQUIRES PATIENT SELECTION
+    if (response.actions.contains('check_patient_status') ||
+        query.toLowerCase().contains('check patient status')) {
+      if (_myPatients.isEmpty) {
+        displayMsg = 'You don\'t have any patient yet. Patients will appear here once you prescribe medications to them.';
         _messages.add(DoctorChatMessage(
           text: displayMsg,
           isDoctor: false,
-          action: 'choose_patient',  // This will render patient blocks
-          patientOptions: List<PatientModel>.from(_myPatients),
         ));
         _thinking = false;
         notifyListeners();
         return;
       }
-    }
 
-    // SPEC FEATURE 4: Review Recent Alerts (last 24 hours)
-    if (response.actions.contains('review_recent_alerts') ||
-        query.toLowerCase().contains('recent alert') ||
-        query.toLowerCase().contains('review alert')) {
-      displayMsg = await _handleReviewRecentAlerts();
-    }
-
-    // SPEC FEATURE 2: Check Patient Status
-    if (response.actions.contains('check_patient_status')) {
-      displayMsg =
-      await _handleCheckPatientStatus(response.patientId, query);
+      // Show patient selection UI
+      _messages.add(DoctorChatMessage(
+        text: 'Which patient would you like to check on?',
+        isDoctor: false,
+        action: 'choose_patient_for_status',
+        patientOptions: List<PatientModel>.from(_myPatients),
+      ));
+      _thinking = false;
+      notifyListeners();
+      return;
     }
 
     // SPEC FEATURE 3: Send Appointment Request (with calendar button)
     if (response.actions.contains('send_appointment_request') ||
-        response.actions.contains('book_appointment')) {
+        response.actions.contains('book_appointment') ||
+        query.toLowerCase().contains('send appointment request')) {
       debugPrint('📅 Send appointment request triggered');
       debugPrint('   patientId: ${response.patientId}');
       debugPrint('   sendToPatient: ${response.sendToPatient}');
@@ -321,7 +328,7 @@ class DoctorChatProvider extends ChangeNotifier {
         } else {
           debugPrint('✅ Showing patient selection UI');
           _messages.add(DoctorChatMessage(
-            text: 'Select a patient from your prescription list to request an appointment:',
+            text: 'Which patient would you like to send an appointment request to?',
             isDoctor: false,
             action: 'choose_appointment_patient',
             patientOptions: List<PatientModel>.from(_myPatients),
@@ -348,83 +355,6 @@ class DoctorChatProvider extends ChangeNotifier {
     ));
     _thinking = false;
     notifyListeners();
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // SPEC FEATURE 1: HOW ARE MY PATIENTS TODAY?
-  // ══════════════════════════════════════════════════════════════════════════
-
-  Future<String> _handleHowAreMyPatients() async {
-    if (_doctor == null) return 'No doctor context available.';
-
-    if (_myPatients.isEmpty) {
-      return 'You don\'t have any patient yet. Patients will appear here once you prescribe medications to them.';
-    }
-
-    // Refresh patient data for latest adherence
-    await _loadMyPatients();
-
-    final report = StringBuffer();
-    report.writeln('📊 **Patient Status Report**\n');
-    report.writeln(
-        'You have ${_myPatients.length} patient(s) via prescriptions:\n');
-
-    for (final patient in _myPatients) {
-      report.writeln('━━━━━━━━━━━━━━━━━━━━');
-      report.writeln('👤 **${patient.name}**');
-      report.writeln(
-          '📋 Diagnosis: ${patient.diagnosis ?? "Not recorded"}');
-
-      final myMeds = _myPrescriptions[patient.id] ?? [];
-
-      if (myMeds.isEmpty) {
-        report.writeln('💊 No active prescriptions from you');
-      } else {
-        final activeMeds = myMeds.where((m) => m.active).toList();
-        final takenCount = activeMeds.where((m) => m.isTakenToday).length;
-        final total = activeMeds.length;
-        final adherenceRate =
-        total > 0 ? (takenCount / total * 100).toStringAsFixed(0) : '0';
-
-        report.writeln('💊 **Your Prescriptions**: $total medication(s)');
-        report.writeln(
-            '✅ **Adherence**: $takenCount/$total taken today ($adherenceRate%)');
-
-        final missed =
-        activeMeds.where((m) => !m.isTakenToday).toList();
-        if (missed.isNotEmpty) {
-          report.writeln('⚠️ **Missed Today**:');
-          for (final med in missed) {
-            report.writeln('   • ${med.name} (${med.dosage})');
-          }
-        }
-      }
-
-      report.writeln('');
-    }
-
-    try {
-      final alerts =
-      await _db.getRecentAlertsForDoctor(_doctor!.id);
-      if (alerts.isNotEmpty) {
-        report.writeln('\n🚨 **Recent Alerts (24h)**: ${alerts.length}');
-        report.writeln('Use "Review recent alerts" to see details.');
-      } else {
-        report.writeln('\n✅ No recent alerts in the last 24 hours.');
-      }
-    } catch (_) {}
-
-    // ✅ FIX: Add patient selection UI after the report
-    report.writeln('\n━━━━━━━━━━━━━━━━━━━━');
-    report.writeln('\n👥 **Select a patient below to:**');
-    report.writeln('• Check their status');
-    report.writeln('• Send appointment request');
-    report.writeln('• Send a message');
-
-    // This will be handled by adding patientOptions to the message
-    // See the _processResponse fix below
-
-    return report.toString();
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -547,7 +477,7 @@ class DoctorChatProvider extends ChangeNotifier {
 
   // ══════════════════════════════════════════════════════════════════════════
   // SPEC FEATURE 2: CHECK PATIENT STATUS
-  // Sends "How are you feeling today?" notification to patient
+  // Shows detailed status for a specific patient including medications and alerts
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<String> _handleCheckPatientStatus(
@@ -564,46 +494,109 @@ class DoctorChatProvider extends ChangeNotifier {
           'Your patient (via prescriptions): $names. Could you specify?';
     }
 
-    await _sendCheckStatusNotification(target);
+    // Build detailed status report for this specific patient
+    final report = StringBuffer();
+    report.writeln('📊 **Status Report for ${target.name}**\n');
+    report.writeln('━━━━━━━━━━━━━━━━━━━━');
 
-    return 'I\'ve sent a notification to **${target.name}** asking: "How are you feeling today?"\n\n'
-        'They will reply, and you\'ll receive their response via notification.';
+    // Basic info
+    report.writeln('👤 **Patient**: ${target.name}');
+    report.writeln('📧 **Email**: ${target.email}');
+    report.writeln('📋 **Diagnosis**: ${target.diagnosis ?? "Not recorded"}');
+    report.writeln('');
+
+    // Medication status
+    final myMeds = _myPrescriptions[target.id] ?? [];
+
+    if (myMeds.isEmpty) {
+      report.writeln('💊 **Medications**: No active prescriptions from you');
+    } else {
+      final activeMeds = myMeds.where((m) => m.active).toList();
+      final takenCount = activeMeds.where((m) => m.isTakenToday).length;
+      final total = activeMeds.length;
+      final adherenceRate =
+      total > 0 ? (takenCount / total * 100).toStringAsFixed(0) : '0';
+
+      report.writeln('💊 **Medications**: $total active prescription(s)');
+      report.writeln('✅ **Today\'s Adherence**: $takenCount/$total taken ($adherenceRate%)');
+      report.writeln('');
+
+      // List all medications with today's status
+      report.writeln('**Medication Details**:');
+      for (final med in activeMeds) {
+        final status = med.isTakenToday ? '✅ Taken' : '⚠️ Not taken yet';
+        report.writeln('• ${med.name} (${med.dosage}) - $status');
+        if (med.reminderTimes.isNotEmpty) {
+          report.writeln('  Times: ${med.reminderTimes.join(", ")}');
+        }
+      }
+
+      report.writeln('');
+    }
+
+    // Recent alerts for this specific patient
+    try {
+      final now = DateTime.now();
+      final yesterday = now.subtract(const Duration(hours: 24));
+
+      final alertsSnapshot = await FirebaseFirestore.instance
+          .collection('health_alerts')
+          .where('doctorId', isEqualTo: _doctor!.id)
+          .where('patientId', isEqualTo: target.id)
+          .get();
+
+      final patientAlerts = alertsSnapshot.docs
+          .map((doc) {
+        try {
+          return alert.HealthAlert.fromFirestore(doc);
+        } catch (e) {
+          return null;
+        }
+      })
+          .whereType<alert.HealthAlert>()
+          .where((alert) => alert.createdAt.isAfter(yesterday))
+          .toList();
+
+      if (patientAlerts.isEmpty) {
+        report.writeln('🟢 **Recent Alerts**: No alerts in the last 24 hours');
+      } else {
+        report.writeln('🚨 **Recent Alerts (24h)**: ${patientAlerts.length} alert(s)');
+        report.writeln('');
+
+        for (final alert in patientAlerts.take(5)) {
+          final timeAgo = _getTimeAgo(alert.createdAt);
+          report.writeln('---');
+          report.writeln('⏰ $timeAgo');
+          report.writeln('⚠️ Risk: ${alert.riskLevel.toUpperCase()}');
+          report.writeln('💬 ${alert.message}');
+          report.writeln('');
+        }
+      }
+    } catch (e) {
+      report.writeln('⚠️ Unable to load recent alerts');
+    }
+
+    return report.toString();
   }
 
-  Future<void> _sendCheckStatusNotification(PatientModel patient) async {
+  // Helper method to handle patient status check when patient is selected from UI
+  Future<void> checkPatientStatusFromSelection(PatientModel patient) async {
     if (_doctor == null) return;
 
-    try {
-      await _db.createPatientInboxMessage(
-        patientId: patient.id,
-        message:
-        '👨‍⚕️ Dr. ${_doctor!.name} is checking on you: "How are you feeling today?"',
-        type: 'doctor_check',
-        doctorId: _doctor!.id,
-      );
+    _messages.add(DoctorChatMessage(
+      text: 'Checking status for ${patient.name}...',
+      isDoctor: true,
+    ));
+    notifyListeners();
 
-      await InboxService.sendDoctorMessage(
-        userId: patient.id,
-        doctorName: _doctor!.name,
-        doctorId: _doctor!.id,
-        message: 'How are you feeling today?',
-        metadata: {'action': 'doctor_check', 'doctorId': _doctor!.id},
-      );
+    final statusReport = await _handleCheckPatientStatus(patient.id, '');
 
-      await NotificationService.sendPushToUser(
-        userId: patient.id,
-        userCollection: 'patient',
-        title: '👨‍⚕️ Dr. ${_doctor!.name}',
-        body: 'How are you feeling today?',
-        channel: 'careloop_queue',
-      );
-
-      debugPrint(
-          '✅ Sent check status notification to ${patient.name}');
-    } catch (e) {
-      debugPrint(
-          '❌ Error sending check status notification: $e');
-    }
+    _messages.add(DoctorChatMessage(
+      text: statusReport,
+      isDoctor: false,
+      action: 'patient_status_checked',
+    ));
+    notifyListeners();
   }
 
   // ══════════════════════════════════════════════════════════════════════════
